@@ -5,7 +5,7 @@ import (
 
 	"github.com/sourcegraph/sourcegraph/internal/database/migration/definition"
 	"github.com/sourcegraph/sourcegraph/internal/database/migration/runner"
-	"github.com/sourcegraph/sourcegraph/internal/database/migration/store"
+	"github.com/sourcegraph/sourcegraph/internal/database/migration/schemas"
 )
 
 type Runner interface {
@@ -16,7 +16,7 @@ type Runner interface {
 
 type Store interface {
 	WithMigrationLog(ctx context.Context, definition definition.Definition, up bool, f func() error) error
-	Describe(ctx context.Context) (map[string]store.Schema, error)
+	Describe(ctx context.Context) (map[string]schemas.SchemaDescription, error)
 }
 
 type RunnerFactory func(ctx context.Context, schemaNames []string) (Runner, error)
