@@ -155,9 +155,9 @@ type StructuralSearch struct {
 	ZoektArgs    *search.ZoektParameters
 	SearcherArgs *search.SearcherParameters
 
-	NotSearcherOnly  bool
-	UseIndex         query.YesNoOnly
-	ContainsRefGlobs bool
+	RunZoektOverRepos bool
+	UseIndex          query.YesNoOnly
+	ContainsRefGlobs  bool
 
 	RepoOpts search.RepoOptions
 }
@@ -181,7 +181,7 @@ func (s *StructuralSearch) Run(ctx context.Context, db database.DB, stream strea
 		}
 
 		repoSet := []repoData{UnindexedList(unindexed)}
-		if s.NotSearcherOnly {
+		if s.RunZoektOverRepos {
 			if indexed != nil {
 				repoSet = append(repoSet, IndexedMap(indexed.RepoRevs))
 			}
