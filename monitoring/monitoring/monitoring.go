@@ -548,7 +548,7 @@ type ObservableOwner struct {
 	handbookTeamName string
 }
 
-// identifer must be all lowercase, and optionally  hyphenated.
+// identifer must be all lowercase, and optionally hyphenated.
 //
 // Some examples of valid identifiers:
 // foo
