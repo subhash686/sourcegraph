@@ -2,7 +2,7 @@
 
 <span class="badge badge-note">SOC2/GN-105</span> <span class="badge badge-note">SOC2/GN-106</span>
 
-Sourcegraph uses a continuous integration and delivery tool, [Buildkite](#buildkite-pipelines), to help ensure a [consistent](#pipeline-health) build, test and deploy process. Software changes are systematically required to complete all steps within the continuous integration tool workflow prior to production deployment, in addition to being [peer reviewed](../pull_request_reviews.md).
+Sourcegraph uses a continuous integration and delivery tool, [Buildkite](#buildkite-pipelines), to help ensure a [consistent](#pipeline-health) build, test and deploy process. Software changes are systematically required to complete all steps within the continuous integration tool workflow prior to [preprod](https://handbook.sourcegraph.com/departments/product-engineering/engineering/cloud/devops/preprod/) and [production](https://handbook.sourcegraph.com/departments/product-engineering/engineering/cloud/devops/deploy-code-change/) deployments, in addition to being [peer reviewed](../pull_request_reviews.md). 
 
 Sourcegraph also maintains a variety of tooling on [GitHub Actions](#github-actions) for continuous integration and repository maintainence purposes.
 
@@ -216,6 +216,13 @@ For more details about best practices and additional features and capabilities, 
 For caching artefacts in steps to speed up steps, see [How to cache CI artefacts](../../how-to/cache_ci_artefacts.md).
 
 #### Observability
+
+##### Deployment notifications
+
+When a pull request is deployed, an automated notification will be posted in either [#alerts-cloud-preprod](https://sourcegraph.slack.com/archives/C039JKERFBN) or [#alerts-cloud](https://sourcegraph.slack.com/archives/CSCFMFXS5) depending in which environment it happened.
+Notifications include a list of the pull-request that were shipped as well as a list of which services specifically were rolled out (some services are released on a [different schedule](https://github.com/sourcegraph/deploy-sourcegraph-cloud/blob/release/renovate.json5#L18-L60)).
+
+If you want to be explictly notified (through a Slack ping) when your pull request reaches _preprod_ or _cloud production_, add the label `notify-on-deploy`.
 
 ##### Pipeline command tracing
 
