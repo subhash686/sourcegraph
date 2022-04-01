@@ -196,8 +196,10 @@ func TestToEvaluateJob(t *testing.T) {
     500
     (PARALLEL
       ZoektGlobalSearch
-      RepoSearch
-      ComputeExcludedRepos)))
+      (PARALLEL
+        NoopJob
+        RepoSearch
+        ComputeExcludedRepos))))
 `).Equal(t, test("foo", search.Streaming))
 
 	autogold.Want("root limit for batch search", `
@@ -207,7 +209,42 @@ func TestToEvaluateJob(t *testing.T) {
     30
     (PARALLEL
       ZoektGlobalSearch
-      RepoSearch
-      ComputeExcludedRepos)))
+      (PARALLEL
+        NoopJob
+        RepoSearch
+        ComputeExcludedRepos))))
 `).Equal(t, test("foo", search.Batch))
+}
+
+func Test_optimizeZoektJobs(t *testing.T) {
+	test := func(input string) string {
+		q, _ := query.ParseLiteral(input)
+		args := &Args{
+			SearchInputs: &run.SearchInputs{
+				UserSettings:        &schema.Settings{},
+				PatternType:         query.SearchTypeLiteral,
+				Protocol:            search.Streaming,
+				OnSourcegraphDotCom: true,
+			},
+		}
+
+		b, _ := query.ToBasicQuery(q)
+		baseJob, _ := toPatternExpressionJob(args, b, database.NewMockDB())
+		optimizedJob, _ := optimizeZoektJobs(args, q, baseJob)
+		return "\n" + PrettySexp(optimizedJob) + "\n"
+	}
+
+	autogold.Want("root limit for streaming search", `
+(AND
+  (LIMIT
+    40000
+    (PARALLEL
+      ZoektGlobalSearch
+      ComputeExcludedRepos))
+  (LIMIT
+    40000
+    (PARALLEL
+      ZoektGlobalSearch
+      ComputeExcludedRepos)))
+`).Equal(t, test("repo:x foo and bar index:only type:file"))
 }

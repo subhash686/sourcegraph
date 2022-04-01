@@ -624,6 +624,109 @@ func toPatternExpressionJob(args *Args, q query.Basic, db database.DB) (Job, err
 	return nil, errors.Errorf("unrecognized type %T in evaluatePatternExpression", q.Pattern)
 }
 
+func optimizeZoektJobs(jargs *Args, q query.Q, baseJob Job) (Job, error) {
+	b, err := query.ToBasicQuery(q)
+	if err != nil {
+		return nil, err
+	}
+	types, _ := q.StringValues(query.FieldType)
+	resultTypes := search.ComputeResultTypes(types, b.PatternString(), jargs.SearchInputs.PatternType)
+
+	fileMatchLimit := int32(computeFileMatchLimit(b, jargs.SearchInputs.Protocol))
+	selector, _ := filter.SelectPathFromString(b.FindValue(query.FieldSelect)) // Invariant: select is validated
+
+	features := toFeatures(jargs.SearchInputs.Features)
+	repoOptions := toRepoOptions(q, jargs.SearchInputs.UserSettings)
+
+	builder := &jobBuilder{
+		query:          b,
+		resultTypes:    resultTypes,
+		repoOptions:    repoOptions,
+		features:       &features,
+		fileMatchLimit: fileMatchLimit,
+		selector:       selector,
+		zoekt:          jargs.Zoekt,
+	}
+
+	repoUniverseSearch, skipRepoSubsetSearch, runZoektOverRepos := jobMode(b, resultTypes, jargs.SearchInputs.PatternType, jargs.SearchInputs.OnSourcegraphDotCom)
+
+	var optimizedJobs []Job
+
+	// Create Text Search Jobs
+	if resultTypes.Has(result.TypeFile | result.TypePath) {
+		// Create Global Text Search jobs.
+		if repoUniverseSearch {
+			job, err := builder.newZoektGlobalSearch(search.TextRequest)
+			if err != nil {
+				return nil, err
+			}
+			optimizedJobs = append(optimizedJobs, job)
+
+		}
+
+		// Create Text Search jobs over repo set.
+		if !skipRepoSubsetSearch {
+			var textSearchJobs []Job
+			if runZoektOverRepos {
+				job, err := builder.newZoektSearch(search.TextRequest)
+				if err != nil {
+					return nil, err
+				}
+				textSearchJobs = append(textSearchJobs, job)
+			}
+
+			optimizedJobs = append(optimizedJobs, &repoPagerJob{
+				child:            NewParallelJob(textSearchJobs...),
+				repoOptions:      repoOptions,
+				useIndex:         b.Index(),
+				containsRefGlobs: query.ContainsRefGlobs(q),
+				zoekt:            jargs.Zoekt,
+			})
+		}
+	}
+
+	optimizedJob := replaceWithOptimizedJobs(baseJob, optimizedJobs)
+
+	checker := authz.DefaultSubRepoPermsChecker
+	if authz.SubRepoEnabled(checker) {
+		optimizedJob = NewFilterJob(optimizedJob)
+	}
+	return optimizedJob, nil
+}
+
+func replaceWithOptimizedJobs(baseJob Job, optimizedJobs []Job) Job {
+	exists := func(name string) bool {
+		for _, j := range optimizedJobs {
+			if name == j.Name() {
+				return true
+			}
+		}
+		return false
+	}
+
+	mapper := Mapper{
+		MapJob: func(currentJob Job) Job {
+			switch currentJob.(type) {
+			case *zoektutil.GlobalSearch:
+				if exists("ZoektGlobalSearch") {
+					return &noopJob{}
+				}
+				return currentJob
+
+			case *zoektutil.ZoektRepoSubsetSearch:
+				if exists("RepoPager") {
+					return &noopJob{}
+				}
+				return currentJob
+
+			default:
+				return currentJob
+			}
+		},
+	}
+	return NewParallelJob(append(optimizedJobs, mapper.Map(baseJob))...)
+}
+
 func ToEvaluateJob(args *Args, q query.Basic, db database.DB) (Job, error) {
 	maxResults := q.ToParseTree().MaxResults(args.SearchInputs.DefaultLimit())
 	timeout := search.TimeoutDuration(q)
@@ -636,6 +739,13 @@ func ToEvaluateJob(args *Args, q query.Basic, db database.DB) (Job, error) {
 		job, err = ToSearchJob(args, query.ToNodes(q.Parameters), db)
 	} else {
 		job, err = toPatternExpressionJob(args, q, db)
+		if err != nil {
+			return nil, err
+		}
+		job, err = optimizeZoektJobs(args, q.ToParseTree(), job)
+		if err != nil {
+			return nil, err // TODO: just fall back to unoptimized.
+		}
 	}
 	if err != nil {
 		return nil, err
