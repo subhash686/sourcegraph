@@ -106,8 +106,7 @@ type ZoektParameters struct {
 // (cmd/searcher). Searcher fulfills (1) unindexed literal and regexp searches
 // and (2) structural search requests.
 type SearcherParameters struct {
-	SearcherURLs *endpoint.Map
-	PatternInfo  *TextPatternInfo
+	PatternInfo *TextPatternInfo
 
 	// UseFullDeadline indicates that the search should try do as much work as
 	// it can within context.Deadline. If false the search should try and be
