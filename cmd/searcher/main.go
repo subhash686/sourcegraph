@@ -108,6 +108,11 @@ func main() {
 			MaxCacheSizeBytes: cacheSizeBytes,
 			DB:                db,
 		},
+		GitOutput: func(ctx context.Context, repo api.RepoName, cmd string, args ...string) ([]byte, error) {
+			c := git.Command(cmd, args...)
+			c.Repo = repo
+			return c.Output(ctx)
+		},
 		Log: log15.Root(),
 	}
 	service.Store.Start()

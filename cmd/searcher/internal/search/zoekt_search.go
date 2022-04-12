@@ -220,6 +220,23 @@ func zoektSearch(ctx context.Context, args *search.TextPatternInfo, branchRepos 
 	return resp.Files, limitHit, partial, nil
 }
 
+// zoektIndexedCommit returns the default indexed commit for a repository.
+func zoektIndexedCommit(ctx context.Context, endpoints []string, repo api.RepoName) (api.CommitID, bool, error) {
+	q := zoektquery.NewRepoSet(string(repo))
+
+	client := getZoektClient(endpoints)
+	resp, err := client.List(ctx, q, &zoekt.ListOptions{Minimal: true})
+	if err != nil {
+		return "", false, err
+	}
+
+	for _, v := range resp.Minimal {
+		return api.CommitID(v.Branches[0].Version), true, nil
+	}
+
+	return "", false, nil
+}
+
 func writeZip(ctx context.Context, w io.Writer, fileMatches []zoekt.FileMatch) (err error) {
 	bytesWritten := 0
 	span, _ := ot.StartSpanFromContext(ctx, "WriteZip")

@@ -12,6 +12,7 @@
 package search
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -29,6 +30,7 @@ import (
 	nettrace "golang.org/x/net/trace"
 
 	"github.com/sourcegraph/sourcegraph/cmd/searcher/protocol"
+	"github.com/sourcegraph/sourcegraph/internal/api"
 	"github.com/sourcegraph/sourcegraph/internal/errcode"
 	"github.com/sourcegraph/sourcegraph/internal/search/searcher"
 	streamhttp "github.com/sourcegraph/sourcegraph/internal/search/streaming/http"
@@ -46,7 +48,16 @@ const (
 // Service is the search service. It is an http.Handler.
 type Service struct {
 	Store *Store
-	Log   log15.Logger
+
+	// GitOutput returns the stdout of running the cmd against the repo. cmd
+	// has to be "git".
+	//
+	// TODO pick a design which doesn't directly depend on Command. Probably
+	// adding a relevant function to the gitserver client. This is only used
+	// by FeatHybrid.
+	GitOutput func(ctx context.Context, repo api.RepoName, cmd string, args ...string) ([]byte, error)
+
+	Log log15.Logger
 }
 
 // ServeHTTP handles HTTP based search requests
@@ -120,6 +131,8 @@ func (s *Service) streamSearch(ctx context.Context, w http.ResponseWriter, p pro
 func (s *Service) search(ctx context.Context, p *protocol.Request, sender matchSender) (err error) {
 	tr := nettrace.New("search", fmt.Sprintf("%s@%s", p.Repo, p.Commit))
 	tr.LazyPrintf("%s", p.Pattern)
+
+	// TODO observability around FeatHybrid
 
 	span, ctx := ot.StartSpanFromContext(ctx, "Search")
 	ext.Component.Set(span, "service")
@@ -202,6 +215,45 @@ func (s *Service) search(ctx context.Context, p *protocol.Request, sender matchS
 		}
 		zf, err := s.Store.zipCache.Get(path)
 		return path, zf, err
+	}
+
+	hybrid := !p.IsStructuralPat && p.FeatHybrid
+	if hybrid {
+		// TODO which ctx?
+		indexed, ok, err := zoektIndexedCommit(ctx, p.IndexerEndpoints, p.Repo)
+		if err != nil {
+			return err
+		}
+		// TODO from this point onwards we should cache keyed by indexed + p.Commit
+		if ok {
+			out, err := s.GitOutput(ctx, p.Repo, "git", "diff", "-z", "--name-status", "--no-renames", string(p.Commit), string(indexed))
+			if err != nil {
+				return err
+			}
+
+			slices := bytes.Split(bytes.TrimRight(out, "\x00"), []byte{0})
+			if len(slices)%2 != 0 {
+				return errors.New("uneven pairs")
+			}
+
+			var unindexedSearch []string
+			var indexedIgnore []string
+			for i := 0; i < len(slices); i += 2 {
+				path := string(slices[i+1])
+				switch slices[i][0] {
+				case 'A':
+					unindexedSearch = append(unindexedSearch, path)
+				case 'M':
+					unindexedSearch = append(unindexedSearch, path)
+					indexedIgnore = append(indexedIgnore, path)
+				case 'D':
+					indexedIgnore = append(indexedIgnore, path)
+				}
+			}
+
+			// TODO zoektSearch
+			// TODO fetch paths unindexedSearch and search them
+		}
 	}
 
 	zipPath, zf, err := getZipFileWithRetry(getZf)
