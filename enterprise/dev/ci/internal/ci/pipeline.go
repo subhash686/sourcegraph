@@ -93,7 +93,11 @@ func GeneratePipeline(c Config) (*bk.Pipeline, error) {
 			ops.Merge(operations.NewNamedSet(operations.PipelineSetupSetName,
 				triggerAsync(buildOptions)))
 
-			ops.Append(prPreview())
+			// Do not create client PR preview if Go or GraphQL is changed to avoid confusing
+			// preview behavior, because only Client code is used to deploy application preview.
+			if !c.Diff.Has(changed.Go) && !c.Diff.Has(changed.GraphQL) {
+				ops.Append(prPreview())
+			}
 		}
 		ops.Merge(CoreTestOperations(c.Diff, CoreTestOperationsOptions{MinimumUpgradeableVersion: minimumUpgradeableVersion}))
 
@@ -117,7 +121,8 @@ func GeneratePipeline(c Config) (*bk.Pipeline, error) {
 		// builds.
 		ops = operations.NewSet(
 			addClientLinters,
-			addBrowserExt,
+			addBrowserExtensionUnitTests,
+			addBrowserExtensionIntegrationTests(0), // we pass 0 here as we don't have other pipeline steps to contribute to the resulting Percy build
 			frontendTests,
 			wait,
 			addBrowserExtensionReleaseSteps)
@@ -127,7 +132,8 @@ func GeneratePipeline(c Config) (*bk.Pipeline, error) {
 		// e2e tests.
 		ops = operations.NewSet(
 			addClientLinters,
-			addBrowserExt,
+			addBrowserExtensionUnitTests,
+			addBrowserExtensionIntegrationTests(0), // we pass 0 here as we don't have other pipeline steps to contribute to the resulting Percy build
 			frontendTests,
 			wait,
 			addBrowserExtensionE2ESteps)
@@ -267,7 +273,7 @@ func GeneratePipeline(c Config) (*bk.Pipeline, error) {
 	ops.Apply(pipeline)
 
 	// Validate generated pipeline have unique keys
-	if err := pipeline.EnsureUniqueKeys(); err != nil {
+	if err := pipeline.EnsureUniqueKeys(make(map[string]int)); err != nil {
 		return nil, err
 	}
 

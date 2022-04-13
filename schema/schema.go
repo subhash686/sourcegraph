@@ -419,6 +419,12 @@ type CloudKMSEncryptionKey struct {
 	Keyname         string `json:"keyname"`
 	Type            string `json:"type"`
 }
+type CodeIntelRepositoryBadge struct {
+	// Enabled description: Show the code intelligence badge when viewing a repository.
+	Enabled bool `json:"enabled"`
+	// ForNerds description: Show entirely too much information.
+	ForNerds *bool `json:"forNerds,omitempty"`
+}
 
 // CustomGitFetchMapping description: Mapping from Git clone URl domain/path to git fetch command. The `domainPath` field contains the Git clone URL domain/path part. The `fetch` field contains the custom git fetch command.
 type CustomGitFetchMapping struct {
@@ -589,6 +595,8 @@ type ExperimentalFeatures struct {
 	NpmPackages string `json:"npmPackages,omitempty"`
 	// Pagure description: Allow adding Pagure code host connections
 	Pagure string `json:"pagure,omitempty"`
+	// PasswordPolicy description: Enables and configures password policy. This will allow admins to enforce password complexity and length requirements.
+	PasswordPolicy *PasswordPolicy `json:"passwordPolicy,omitempty"`
 	// Perforce description: Allow adding Perforce code host connections
 	Perforce string `json:"perforce,omitempty"`
 	// Ranking description: Experimental search result ranking options.
@@ -639,6 +647,8 @@ type ExternalIdentity struct {
 type FusionClient struct {
 	// Enabled description: Enable the p4-fusion client for cloning and fetching repos
 	Enabled bool `json:"enabled"`
+	// FsyncEnable description:  Enable fsync() while writing objects to disk to ensure they get written to permanent storage immediately instead of being cached. This is to mitigate data loss in events of hardware failure.
+	FsyncEnable bool `json:"fsyncEnable,omitempty"`
 	// IncludeBinaries description: Whether to include binary files
 	IncludeBinaries bool `json:"includeBinaries,omitempty"`
 	// LookAhead description: How many CLs in the future, at most, shall we keep downloaded by the time it is to commit them
@@ -1314,6 +1324,20 @@ type ParentSourcegraph struct {
 	Url string `json:"url,omitempty"`
 }
 
+// PasswordPolicy description: Enables and configures password policy. This will allow admins to enforce password complexity and length requirements.
+type PasswordPolicy struct {
+	// Enabled description: Enables password policy
+	Enabled bool `json:"enabled,omitempty"`
+	// MinimumLength description: The minimum length required for a password
+	MinimumLength int `json:"minimumLength,omitempty"`
+	// NumberOfSpecialCharacters description: The required number of special characters
+	NumberOfSpecialCharacters int `json:"numberOfSpecialCharacters,omitempty"`
+	// RequireAtLeastOneNumber description: Does the password require a number
+	RequireAtLeastOneNumber bool `json:"requireAtLeastOneNumber,omitempty"`
+	// RequireUpperandLowerCase description: Require Mixed characters
+	RequireUpperandLowerCase bool `json:"requireUpperandLowerCase,omitempty"`
+}
+
 // PerforceAuthorization description: If non-null, enforces Perforce depot permissions.
 type PerforceAuthorization struct {
 	// SubRepoPermissions description: Experimental: infer sub-repository permissions from protection rules.
@@ -1601,12 +1625,13 @@ type SettingsExperimentalFeatures struct {
 	// CodeInsightsGqlApi description: DEPRECATED: Enables gql api instead of using setting cascade as a main storage fro code insights entities
 	CodeInsightsGqlApi *bool `json:"codeInsightsGqlApi,omitempty"`
 	// CodeInsightsLandingPage description: DEPRECATED: Enables code insights landing page layout.
-	CodeInsightsLandingPage *bool `json:"codeInsightsLandingPage,omitempty"`
+	CodeInsightsLandingPage  *bool                     `json:"codeInsightsLandingPage,omitempty"`
+	CodeIntelRepositoryBadge *CodeIntelRepositoryBadge `json:"codeIntelRepositoryBadge,omitempty"`
 	// CodeMonitoring description: Enables code monitoring.
 	CodeMonitoring *bool `json:"codeMonitoring,omitempty"`
 	// CodeMonitoringWebHooks description: Shows code monitor webhook and Slack webhook actions in the UI, allowing users to configure them.
 	CodeMonitoringWebHooks *bool `json:"codeMonitoringWebHooks,omitempty"`
-	// CoolCodeIntel description: Use the (cool) experimental reference panel for code intelligence
+	// CoolCodeIntel description: Use the (cool) experimental reference panel for code intelligence.
 	CoolCodeIntel *bool `json:"coolCodeIntel,omitempty"`
 	// CopyQueryButton description: DEPRECATED: This feature is now permanently enabled. Enables displaying the copy query button in the search bar when hovering over the global navigation bar.
 	CopyQueryButton *bool `json:"copyQueryButton,omitempty"`
@@ -1688,6 +1713,10 @@ type SiteConfiguration struct {
 	//   ```
 	//
 	AuthSessionExpiry string `json:"auth.sessionExpiry,omitempty"`
+	// AuthUnlockAccountLinkExpiry description: Validity expressed in minutes of the unlock account token
+	AuthUnlockAccountLinkExpiry int `json:"auth.unlockAccountLinkExpiry,omitempty"`
+	// AuthUnlockAccountLinkSigningKey description: Base64 encoded HMAC Signing key to sign a JWT token, which is attached to each invitation URL.
+	AuthUnlockAccountLinkSigningKey string `json:"auth.unlockAccountLinkSigningKey,omitempty"`
 	// AuthUserOrgMap description: Ensure that matching users are members of the specified orgs (auto-joining users to the orgs if they are not already a member). Provide a JSON object of the form `{"*": ["org1", "org2"]}`, where org1 and org2 are orgs that all users are automatically joined to. Currently the only supported key is `"*"`.
 	AuthUserOrgMap map[string][]string `json:"auth.userOrgMap,omitempty"`
 	// AuthzEnforceForSiteAdmins description: When true, site admins will only be able to see private code they have access to via our authz system.

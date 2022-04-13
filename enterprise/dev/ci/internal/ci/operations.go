@@ -58,9 +58,6 @@ func CoreTestOperations(diff changed.Diff, opts CoreTestOperationsOptions) *oper
 	if diff.Has(changed.Dockerfiles) {
 		linterOps.Append(addDockerfileLint)
 	}
-	if diff.Has(changed.Terraform) {
-		linterOps.Append(addTerraformScan)
-	}
 	if diff.Has(changed.Docs) {
 		linterOps.Append(addDocs)
 	}
@@ -71,10 +68,11 @@ func CoreTestOperations(diff changed.Diff, opts CoreTestOperationsOptions) *oper
 		ops.Merge(operations.NewNamedSet("Client checks",
 			clientIntegrationTests,
 			clientChromaticTests(opts.ChromaticShouldAutoAccept),
-			frontendTests,     // ~4.5m
-			addWebApp,         // ~5.5m
-			addBrowserExt,     // ~4.5m
-			addClientLinters)) // ~9m
+			frontendTests,                // ~4.5m
+			addWebApp,                    // ~5.5m
+			addBrowserExtensionUnitTests, // ~4.5m
+			addVSCExt,                    // ~5.5m
+			addClientLinters))            // ~9m
 	}
 
 	if diff.Has(changed.Go | changed.GraphQL) {
@@ -126,11 +124,11 @@ func addDocs(pipeline *bk.Pipeline) {
 }
 
 // Adds the terraform scanner step.  This executes very quickly ~6s
-func addTerraformScan(pipeline *bk.Pipeline) {
-	pipeline.AddStep(":lock: Checkov Terraform scanning",
-		bk.Cmd("dev/ci/ci-checkov.sh"),
-		bk.SoftFail(222))
-}
+// func addTerraformScan(pipeline *bk.Pipeline) {
+//	pipeline.AddStep(":lock: Checkov Terraform scanning",
+//		bk.Cmd("dev/ci/ci-checkov.sh"),
+//		bk.SoftFail(222))
+//}
 
 // Adds the static check test step.
 func addCheck(pipeline *bk.Pipeline) {
@@ -213,29 +211,38 @@ func addWebApp(pipeline *bk.Pipeline) {
 		bk.Cmd("dev/ci/codecov.sh -c -F typescript -F unit"))
 }
 
-// Builds and tests the browser extension.
-func addBrowserExt(pipeline *bk.Pipeline) {
-	// Browser extension integration tests
-	for _, browser := range []string{"chrome"} {
-		pipeline.AddStep(
-			fmt.Sprintf(":%s: Puppeteer tests for %s extension", browser, browser),
-			withYarnCache(),
-			bk.Env("EXTENSION_PERMISSIONS_ALL_URLS", "true"),
-			bk.Env("BROWSER", browser),
-			bk.Env("LOG_BROWSER_CONSOLE", "true"),
-			bk.Env("SOURCEGRAPH_BASE_URL", "https://sourcegraph.com"),
-			bk.Env("POLLYJS_MODE", "replay"), // ensure that we use existing recordings
-			bk.Cmd("git-lfs fetch"),
-			bk.Cmd("yarn --frozen-lockfile --network-timeout 60000"),
-			bk.Cmd("yarn --cwd client/browser -s run build"),
-			bk.Cmd("yarn run cover-browser-integration"),
-			bk.Cmd("yarn nyc report -r json"),
-			bk.Cmd("dev/ci/codecov.sh -c -F typescript -F integration"),
-			bk.ArtifactPaths("./puppeteer/*.png"),
-		)
-	}
+var browsers = []string{"chrome"}
 
-	// Browser extension unit tests
+func getParallelTestCount(webParallelTestCount int) int {
+	return webParallelTestCount + len(browsers)
+}
+
+func addBrowserExtensionIntegrationTests(parallelTestCount int) operations.Operation {
+	testCount := getParallelTestCount(parallelTestCount)
+	return func(pipeline *bk.Pipeline) {
+		for _, browser := range browsers {
+			pipeline.AddStep(
+				fmt.Sprintf(":%s: Puppeteer tests for %s extension", browser, browser),
+				withYarnCache(),
+				bk.Env("EXTENSION_PERMISSIONS_ALL_URLS", "true"),
+				bk.Env("BROWSER", browser),
+				bk.Env("LOG_BROWSER_CONSOLE", "true"),
+				bk.Env("SOURCEGRAPH_BASE_URL", "https://sourcegraph.com"),
+				bk.Env("POLLYJS_MODE", "replay"), // ensure that we use existing recordings
+				bk.Env("PERCY_ON", "true"),
+				bk.Env("PERCY_PARALLEL_TOTAL", strconv.Itoa(testCount)),
+				bk.Cmd("yarn --frozen-lockfile --network-timeout 60000"),
+				bk.Cmd("yarn workspace @sourcegraph/browser -s run build"),
+				bk.Cmd("yarn run cover-browser-integration"),
+				bk.Cmd("yarn nyc report -r json"),
+				bk.Cmd("dev/ci/codecov.sh -c -F typescript -F integration"),
+				bk.ArtifactPaths("./puppeteer/*.png"),
+			)
+		}
+	}
+}
+
+func addBrowserExtensionUnitTests(pipeline *bk.Pipeline) {
 	pipeline.AddStep(":jest::chrome: Test (client/browser)",
 		withYarnCache(),
 		bk.AnnotatedCmd("dev/ci/yarn-test.sh client/browser", bk.AnnotatedCmdOpts{
@@ -244,6 +251,19 @@ func addBrowserExt(pipeline *bk.Pipeline) {
 			},
 		}),
 		bk.Cmd("dev/ci/codecov.sh -c -F typescript -F unit"))
+}
+
+// Builds and tests the VS Code extensions.
+func addVSCExt(pipeline *bk.Pipeline) {
+	pipeline.AddStep(
+		":vscode: Puppeteer tests for VS Code extension",
+		withYarnCache(),
+		bk.Cmd("yarn --frozen-lockfile --network-timeout 60000"),
+		bk.Cmd("yarn generate"),
+		bk.Cmd("yarn --cwd client/vscode -s build"),
+		bk.Cmd("yarn --cwd client/vscode -s package"),
+		bk.Cmd("yarn --cwd client/vscode -s test --verbose"),
+	)
 }
 
 func clientIntegrationTests(pipeline *bk.Pipeline) {
@@ -265,39 +285,26 @@ func clientIntegrationTests(pipeline *bk.Pipeline) {
 
 	// Chunk web integration tests to save time via parallel execution.
 	chunkedTestFiles := getChunkedWebIntegrationFileNames(chunkSize)
-	// Percy finalize step should be executed after all integration tests.
-	puppeteerFinalizeDependencies := make([]bk.StepOpt, len(chunkedTestFiles))
+	chunkCount := len(chunkedTestFiles)
+	parallelTestCount := getParallelTestCount(chunkCount)
+
+	addBrowserExtensionIntegrationTests(chunkCount)(pipeline)
 
 	// Add pipeline step for each chunk of web integrations files.
 	for i, chunkTestFiles := range chunkedTestFiles {
 		stepLabel := fmt.Sprintf(":puppeteer::electric_plug: Puppeteer tests chunk #%s", fmt.Sprint(i+1))
 
-		stepKey := fmt.Sprintf("puppeteer:chunk:%s", fmt.Sprint(i+1))
-		puppeteerFinalizeDependencies[i] = bk.DependsOn(stepKey)
-
 		pipeline.AddStep(stepLabel,
 			withYarnCache(),
-			bk.Key(stepKey),
 			bk.DependsOn(prepStepKey),
-			bk.DisableManualRetry("The Percy build is finalized even if one of the concurrent agents fails. To retry correctly, restart the entire pipeline."),
+			bk.DisableManualRetry("The Percy build is not finalized if one of the concurrent agents fails. To retry correctly, restart the entire pipeline."),
 			bk.Env("PERCY_ON", "true"),
+			// If PERCY_PARALLEL_TOTAL is set, the API will wait for that many finalized builds to finalize the Percy build.
+			// https://docs.percy.io/docs/parallel-test-suites#how-it-works
+			bk.Env("PERCY_PARALLEL_TOTAL", strconv.Itoa(parallelTestCount)),
 			bk.Cmd(fmt.Sprintf(`dev/ci/yarn-web-integration.sh "%s"`, chunkTestFiles)),
 			bk.ArtifactPaths("./puppeteer/*.png"))
 	}
-
-	finalizeSteps := []bk.StepOpt{
-		// Allow to teardown the Percy build even if there was a failure in the earlier Percy steps.
-		bk.AllowDependencyFailure(),
-		// Percy service often fails for obscure reasons. The step is pretty fast, so we
-		// just retry a few times.
-		bk.AutomaticRetry(3),
-		// Finalize just uses a remote package.
-		// skipGitCloneStep,
-		bk.Cmd("npx @percy/cli build:finalize"),
-	}
-
-	pipeline.AddStep(":puppeteer::electric_plug: Puppeteer tests finalize",
-		append(finalizeSteps, puppeteerFinalizeDependencies...)...)
 }
 
 func clientChromaticTests(autoAcceptChanges bool) operations.Operation {
@@ -435,7 +442,7 @@ func addBrowserExtensionE2ESteps(pipeline *bk.Pipeline) {
 			bk.Env("LOG_BROWSER_CONSOLE", "true"),
 			bk.Env("SOURCEGRAPH_BASE_URL", "https://sourcegraph.com"),
 			bk.Cmd("yarn --frozen-lockfile --network-timeout 60000"),
-			bk.Cmd("yarn --cwd client/browser -s run build"),
+			bk.Cmd("yarn workspace @sourcegraph/browser -s run build"),
 			bk.Cmd("yarn -s mocha ./client/browser/src/end-to-end/github.test.ts ./client/browser/src/end-to-end/gitlab.test.ts"),
 			bk.ArtifactPaths("./puppeteer/*.png"))
 	}
@@ -451,21 +458,21 @@ func addBrowserExtensionReleaseSteps(pipeline *bk.Pipeline) {
 	pipeline.AddStep(":rocket::chrome: Extension release",
 		withYarnCache(),
 		bk.Cmd("yarn --frozen-lockfile --network-timeout 60000"),
-		bk.Cmd("yarn --cwd client/browser -s run build"),
-		bk.Cmd("yarn --cwd client/browser release:chrome"))
+		bk.Cmd("yarn workspace @sourcegraph/browser -s run build"),
+		bk.Cmd("yarn workspace @sourcegraph/browser release:chrome"))
 
 	// Build and self sign the FF add-on and upload it to a storage bucket
 	pipeline.AddStep(":rocket::firefox: Extension release",
 		withYarnCache(),
 		bk.Cmd("yarn --frozen-lockfile --network-timeout 60000"),
-		bk.Cmd("yarn --cwd client/browser release:firefox"))
+		bk.Cmd("yarn workspace @sourcegraph/browser release:firefox"))
 
 	// Release to npm
 	pipeline.AddStep(":rocket::npm: npm Release",
 		withYarnCache(),
 		bk.Cmd("yarn --frozen-lockfile --network-timeout 60000"),
-		bk.Cmd("yarn --cwd client/browser -s run build"),
-		bk.Cmd("yarn --cwd client/browser release:npm"))
+		bk.Cmd("yarn workspace @sourcegraph/browser -s run build"),
+		bk.Cmd("yarn workspace @sourcegraph/browser release:npm"))
 }
 
 // Adds a Buildkite pipeline "Wait".
@@ -523,7 +530,6 @@ func codeIntelQA(candidateTag string) operations.Operation {
 func serverE2E(candidateTag string) operations.Operation {
 	return func(p *bk.Pipeline) {
 		p.AddStep(":chromium: Sourcegraph E2E",
-			bk.Agent("queue", bk.AgentQueueBaremetal),
 			// Run tests against the candidate server image
 			bk.DependsOn(candidateImageStepKey("server")),
 			bk.Env("CANDIDATE_VERSION", candidateTag),
@@ -541,7 +547,6 @@ func serverE2E(candidateTag string) operations.Operation {
 func serverQA(candidateTag string) operations.Operation {
 	return func(p *bk.Pipeline) {
 		p.AddStep(":docker::chromium: Sourcegraph QA",
-			bk.Agent("queue", bk.AgentQueueBaremetal),
 			// Run tests against the candidate server image
 			bk.DependsOn(candidateImageStepKey("server")),
 			bk.Env("CANDIDATE_VERSION", candidateTag),
@@ -561,7 +566,6 @@ func serverQA(candidateTag string) operations.Operation {
 func testUpgrade(candidateTag, minimumUpgradeableVersion string) operations.Operation {
 	return func(p *bk.Pipeline) {
 		p.AddStep(":docker::arrow_double_up: Sourcegraph Upgrade",
-			bk.Agent("queue", bk.AgentQueueBaremetal),
 			// Run tests against the candidate server image
 			bk.DependsOn(candidateImageStepKey("server")),
 			bk.Env("CANDIDATE_VERSION", candidateTag),
