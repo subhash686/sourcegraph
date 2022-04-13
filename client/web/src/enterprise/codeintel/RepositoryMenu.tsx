@@ -17,6 +17,7 @@ import {
     PreciseSupportLevel,
     LSIFUploadState,
     LSIFIndexState,
+    SearchBasedSupportLevel,
 } from '../../graphql-operations'
 
 import { CodeIntelIndexer } from './shared/components/CodeIntelIndexer'
@@ -106,7 +107,15 @@ const UserFacingRepositoryMenuContent: React.FunctionComponent<{
         ).values(),
     ].map(indexers => indexers[0])
 
-    const indexerNames = allIndexers.map(indexer => indexer.name).sort()
+    const languages = [
+        ...new Set(
+            data.searchBasedSupport
+                ?.filter(support => support.supportLevel === SearchBasedSupportLevel.BASIC)
+                .map(support => support.language)
+        ),
+    ].sort()
+    const fakeIndexerNames = languages.map(name => `lsif-${name.toLowerCase()}`)
+    const indexerNames = [...new Set(allIndexers.map(indexer => indexer.name).concat(fakeIndexerNames))].sort()
 
     // Expand badges to be as large as the maximum badge when we are displaying
     // badges of different types. This condition checks that there's at least one
@@ -164,7 +173,7 @@ const IndexerSummary: React.FunctionComponent<{
     const finishedAtTimes = summary.uploads.map(upload => upload.finishedAt || undefined).filter(isDefined)
     const lastUpdated = finishedAtTimes.length === 0 ? undefined : finishedAtTimes.sort().reverse()[0]
 
-    return summary.indexer ? (
+    return (
         <div className="px-2 py-1">
             <div className="d-flex align-items-center">
                 <div className="px-2 py-1 text-uppercase">
@@ -172,15 +181,17 @@ const IndexerSummary: React.FunctionComponent<{
                         <Badge variant="success" className={className}>
                             Enabled
                         </Badge>
-                    ) : (
+                    ) : summary.indexer?.url ? (
                         <Badge variant="secondary" className={className}>
                             Configurable
                         </Badge>
+                    ) : (
+                        <Badge variant="outlineSecondary">Unavailable</Badge>
                     )}
                 </div>
 
                 <div className="px-2 py-1">
-                    <p className="mb-1">{summary.indexer.name} precise intelligence</p>
+                    <p className="mb-1">{summary.indexer?.name || summary.name} precise intelligence</p>
 
                     {lastUpdated && (
                         <p className="mb-1 text-muted">
@@ -189,7 +200,11 @@ const IndexerSummary: React.FunctionComponent<{
                     )}
 
                     {summary.uploads.length + summary.indexes.length === 0 ? (
-                        <Link to={summary.indexer.url}>Set up for this repository</Link>
+                        summary.indexer?.url ? (
+                            <Link to={summary.indexer?.url}>Set up for this repository</Link>
+                        ) : (
+                            <>TELEMETRY LINK ENTERS THE CHAT</>
+                        )
                     ) : (
                         <>
                             {failedUploads.length === 0 && failedIndexes.length === 0 && (
@@ -220,7 +235,7 @@ const IndexerSummary: React.FunctionComponent<{
                 </div>
             </div>
         </div>
-    ) : null
+    )
 }
 
 //
@@ -230,10 +245,10 @@ const Unsupported: React.FunctionComponent<{}> = () => (
     <div className="px-2 py-1">
         <div className="d-flex align-items-center">
             <div className="px-2 py-1 text-uppercase">
-                <Badge variant="outlineSecondary">Unavailable</Badge>
+                <Badge variant="outlineSecondary">Unsupported</Badge>
             </div>
             <div className="px-2 py-1">
-                <p className="mb-0">Precise code intelligence </p>
+                <p className="mb-0">No language detected</p>
             </div>
         </div>
     </div>

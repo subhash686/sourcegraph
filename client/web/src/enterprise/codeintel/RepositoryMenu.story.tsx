@@ -11,6 +11,7 @@ import {
     LsifUploadFields,
     LSIFUploadState,
     PreciseSupportLevel,
+    SearchBasedSupportLevel,
 } from '../../graphql-operations'
 
 import { RepositoryMenuContent } from './RepositoryMenu'
@@ -206,12 +207,12 @@ const multiplePreciseSupport = [
     },
 ]
 
-// const searchBasedSupport = [
-//     {
-//         language: 'Perl',
-//         supportLevel: SearchBasedSupportLevel.BASIC,
-//     },
-// ]
+const searchBasedSupport = [
+    {
+        language: 'Perl',
+        supportLevel: SearchBasedSupportLevel.BASIC,
+    },
+]
 
 const emptyPayload: UseCodeIntelStatusPayload = {
     activeUploads: [],
@@ -241,7 +242,11 @@ const withPayload = (payload: Partial<UseCodeIntelStatusPayload>): typeof defaul
     useCodeIntelStatus: () => ({ data: { ...emptyPayload, ...payload }, loading: false }),
 })
 
-add('Unavailable', () => <RepositoryMenu {...defaultProps} content={RepositoryMenuContent} />)
+add('Unsupported', () => <RepositoryMenu {...defaultProps} content={RepositoryMenuContent} />)
+
+add('Unavailable', () => (
+    <RepositoryMenu {...defaultProps} content={RepositoryMenuContent} {...withPayload({ searchBasedSupport })} />
+))
 
 add('Multiple projects', () => (
     <RepositoryMenu
