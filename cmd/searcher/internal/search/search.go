@@ -22,6 +22,7 @@ import (
 	"strconv"
 	"time"
 
+	zoektquery "github.com/google/zoekt/query"
 	"github.com/inconshreveable/log15"
 	"github.com/opentracing/opentracing-go/ext"
 	otlog "github.com/opentracing/opentracing-go/log"
@@ -34,6 +35,7 @@ import (
 	"github.com/sourcegraph/sourcegraph/internal/errcode"
 	"github.com/sourcegraph/sourcegraph/internal/search/searcher"
 	streamhttp "github.com/sourcegraph/sourcegraph/internal/search/streaming/http"
+	zoektutil "github.com/sourcegraph/sourcegraph/internal/search/zoekt"
 	"github.com/sourcegraph/sourcegraph/internal/trace/ot"
 	"github.com/sourcegraph/sourcegraph/lib/errors"
 )
@@ -249,6 +251,57 @@ func (s *Service) search(ctx context.Context, p *protocol.Request, sender matchS
 				case 'D':
 					indexedIgnore = append(indexedIgnore, path)
 				}
+			}
+
+			{
+				// TODO race between calling List and searching now. Index may have changed.
+				qText, err := zoektCompile(&p.PatternInfo)
+				if err != nil {
+					return errors.Wrap(err, "failed to compile query for zoekt")
+				}
+				q := zoektquery.Simplify(zoektquery.NewAnd(
+					zoektquery.NewSingleBranchesRepos("HEAD", uint32(p.RepoID)),
+					qText,
+					zoektIgnorePaths(indexedIgnore),
+				))
+
+				k := zoektutil.ResultCountFactor(1, int32(p.Limit), false)
+				opts := zoektutil.SearchOpts(ctx, k, int32(p.Limit), nil)
+				if deadline, ok := ctx.Deadline(); ok {
+					opts.MaxWallTime = time.Until(deadline) - 100*time.Millisecond
+				}
+
+				client := getZoektClient(p.IndexerEndpoints)
+				res, err := client.Search(ctx, q, &opts)
+				if err != nil {
+					return err
+				}
+				for _, fm := range res.Files {
+					var lineMatches []protocol.LineMatch
+					var matchCount int
+					for _, lm := range fm.LineMatches {
+						var offs [][2]int
+						for _, lf := range lm.LineFragments {
+							offs = append(offs, [2]int{lf.LineOffset, lf.MatchLength})
+						}
+						lineMatches = append(lineMatches, protocol.LineMatch{
+							Preview:          string(lm.Line),
+							LineNumber:       lm.LineNumber - 1,
+							OffsetAndLengths: offs,
+						})
+						matchCount += len(offs)
+						if len(offs) == 0 {
+							matchCount++
+						}
+					}
+					sender.Send(protocol.FileMatch{
+						Path:        fm.FileName,
+						LineMatches: lineMatches,
+						MatchCount:  matchCount,
+					})
+				}
+
+				return nil
 			}
 
 			// TODO zoektSearch

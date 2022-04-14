@@ -11,8 +11,10 @@ import (
 
 	"github.com/google/zoekt"
 	zoektquery "github.com/google/zoekt/query"
+	"github.com/grafana/regexp"
 	"github.com/opentracing/opentracing-go/log"
 
+	"github.com/sourcegraph/sourcegraph/cmd/searcher/protocol"
 	"github.com/sourcegraph/sourcegraph/internal/actor"
 	"github.com/sourcegraph/sourcegraph/internal/api"
 	"github.com/sourcegraph/sourcegraph/internal/comby"
@@ -220,8 +222,88 @@ func zoektSearch(ctx context.Context, args *search.TextPatternInfo, branchRepos 
 	return resp.Files, limitHit, partial, nil
 }
 
+// zoektCompile builds a text search zoekt query for p.
+//
+// This function should support the same features as the "compile" function,
+// but return a zoektquery instead of a readerGrep.
+//
+// Note: This is used by hybrid search and not structural search.
+func zoektCompile(p *protocol.PatternInfo) (zoektquery.Q, error) {
+	var parts []zoektquery.Q
+	// we are redoing work here, but ensures we generate the same regex and it
+	// feels nicer than passing in a readerGrep since handle path directly.
+	if rg, err := compile(p); err != nil {
+		return nil, err
+	} else {
+		re, err := syntax.Parse(rg.re.String(), syntax.Perl)
+		if err != nil {
+			return nil, err
+		}
+		parts = append(parts, &zoektquery.Regexp{
+			Regexp:        re,
+			Content:       true,
+			CaseSensitive: !rg.ignoreCase,
+		})
+	}
+
+	for _, pat := range p.IncludePatterns {
+		if !p.PathPatternsAreRegExps {
+			return nil, errors.New("hybrid search expects PathPatternsAreRegExps")
+		}
+		re, err := syntax.Parse(pat, syntax.Perl)
+		if err != nil {
+			return nil, err
+		}
+		parts = append(parts, &zoektquery.Regexp{
+			Regexp:        re,
+			FileName:      true,
+			CaseSensitive: p.PathPatternsAreCaseSensitive,
+		})
+	}
+
+	if p.ExcludePattern != "" {
+		if !p.PathPatternsAreRegExps {
+			return nil, errors.New("hybrid search expects PathPatternsAreRegExps")
+		}
+		re, err := syntax.Parse(p.ExcludePattern, syntax.Perl)
+		if err != nil {
+			return nil, err
+		}
+		parts = append(parts, &zoektquery.Not{Child: &zoektquery.Regexp{
+			Regexp:        re,
+			FileName:      true,
+			CaseSensitive: p.PathPatternsAreCaseSensitive,
+		}})
+	}
+
+	return zoektquery.Simplify(zoektquery.NewAnd(parts...)), nil
+}
+
+func zoektIgnorePaths(paths []string) zoektquery.Q {
+	if len(paths) == 0 {
+		return &zoektquery.Const{Value: true}
+	}
+
+	parts := make([]zoektquery.Q, 0, len(paths))
+	for _, p := range paths {
+		re, err := syntax.Parse("^"+regexp.QuoteMeta(p)+"$", syntax.Perl)
+		if err != nil {
+			panic("failed to regex compile escaped literal: " + err.Error())
+		}
+		parts = append(parts, &zoektquery.Regexp{
+			Regexp:        re,
+			FileName:      true,
+			CaseSensitive: true,
+		})
+	}
+
+	return &zoektquery.Not{Child: zoektquery.NewOr(parts...)}
+}
+
 // zoektIndexedCommit returns the default indexed commit for a repository.
 func zoektIndexedCommit(ctx context.Context, endpoints []string, repo api.RepoName) (api.CommitID, bool, error) {
+	// TODO check we are using the most efficient way to List. I tested with
+	// NewSingleBranchesRepos and it went through a slow path.
 	q := zoektquery.NewRepoSet(string(repo))
 
 	client := getZoektClient(endpoints)
