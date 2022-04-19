@@ -47,7 +47,7 @@ func TestQueueIndexesExplicit(t *testing.T) {
 			},
 			{
 				"root": "web/",
-				"indexer": "lsif-tsc",
+				"indexer": "lsif-typescript",
 				"indexer_args": ["-p", "."],
 				"outfile": "lsif.dump",
 			},
@@ -116,7 +116,7 @@ func TestQueueIndexesExplicit(t *testing.T) {
 				},
 			},
 			Root:        "web/",
-			Indexer:     "lsif-tsc",
+			Indexer:     "lsif-typescript",
 			IndexerArgs: []string{"-p", "."},
 			Outfile:     "lsif.dump",
 		},
@@ -154,7 +154,7 @@ func TestQueueIndexesInDatabase(t *testing.T) {
 				},
 				{
 					"root": "web/",
-					"indexer": "lsif-tsc",
+					"indexer": "lsif-typescript",
 					"indexer_args": ["-p", "."],
 					"outfile": "lsif.dump",
 				},
@@ -240,7 +240,7 @@ func TestQueueIndexesInDatabase(t *testing.T) {
 				},
 			},
 			Root:        "web/",
-			Indexer:     "lsif-tsc",
+			Indexer:     "lsif-typescript",
 			IndexerArgs: []string{"-p", "."},
 			Outfile:     "lsif.dump",
 		},
@@ -268,7 +268,7 @@ index_jobs:
       - --no-animation
   -
     root: web/
-    indexer: lsif-tsc
+    indexer: lsif-typescript
     indexer_args: ['-p', '.']
     outfile: lsif.dump
 `)
@@ -344,7 +344,7 @@ func TestQueueIndexesInRepository(t *testing.T) {
 				},
 			},
 			Root:        "web/",
-			Indexer:     "lsif-tsc",
+			Indexer:     "lsif-typescript",
 			IndexerArgs: []string{"-p", "."},
 			Outfile:     "lsif.dump",
 		},

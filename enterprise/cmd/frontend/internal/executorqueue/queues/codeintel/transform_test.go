@@ -24,7 +24,7 @@ func TestTransformRecord(t *testing.T) {
 			},
 		},
 		Root:        "web",
-		Indexer:     "lsif-node",
+		Indexer:     "lsif-typescript",
 		IndexerArgs: []string{"-p", "."},
 		Outfile:     "",
 	}
@@ -50,7 +50,7 @@ func TestTransformRecord(t *testing.T) {
 				Dir:      "web",
 			},
 			{
-				Image:    "lsif-node",
+				Image:    "lsif-typescript",
 				Commands: []string{"-p ."},
 				Dir:      "web",
 			},
@@ -96,7 +96,7 @@ func TestTransformRecordWithoutIndexer(t *testing.T) {
 				Root:     "web",
 			},
 			{
-				Image:    "lsif-node",
+				Image:    "lsif-typescript",
 				Commands: []string{"-p", "."},
 				Root:     "web",
 			},
@@ -128,7 +128,7 @@ func TestTransformRecordWithoutIndexer(t *testing.T) {
 				Dir:      "web",
 			},
 			{
-				Image:    "lsif-node",
+				Image:    "lsif-typescript",
 				Commands: []string{"-p", "."},
 				Dir:      "web",
 			},

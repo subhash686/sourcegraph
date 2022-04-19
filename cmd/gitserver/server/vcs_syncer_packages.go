@@ -65,7 +65,7 @@ func isPotentiallyMaliciousFilepathInArchive(filepath, destinationDir string) (o
 //
 // For JVM languages, when we create a fake Git repository from a Maven module
 // we also add a lsif-java.json file to the repository. However, we don't create
-// an analogous lsif-node.json for JavaScript/TypeScript. Here's why:
+// an analogous lsif-typescript.json for JavaScript/TypeScript. Here's why:
 //
 // 1. A specific JDK version is needed to correctly index the code. This JDK
 //    version needs to be specified when launching lsif-java. So if we wanted

@@ -9,7 +9,7 @@ import (
 )
 
 // MaxBufferSize is the maximum size of the metaData line in the dump. This should be large enough
-// to be able to read the output of lsif-tsc for most cases, which will contain all glob-expanded
+// to be able to read the output of lsif-typescript for most cases, which will contain all glob-expanded
 // file names in the indexing of JavaScript projects.
 //
 // Data point: lodash's metaData vertex constructed by the args `*.js test/*.js --AllowJs --checkJs`

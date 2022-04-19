@@ -22,7 +22,7 @@ func canonicalize(state *State) {
 }
 
 // canonicalizeDocuments determines if multiple documents are defined with the same URI. This can
-// happen in some indexers (such as lsif-tsc) that index dependent projects into the same index
+// happen in some indexers (such as lsif-typescript) that index dependent projects into the same index
 // as the target project. For each set of documents that share a path, we choose one document to
 // be the canonical representative and merge the contains, definition, and reference data into the
 // unique canonical document. This function guarantees that duplicate document IDs are removed from

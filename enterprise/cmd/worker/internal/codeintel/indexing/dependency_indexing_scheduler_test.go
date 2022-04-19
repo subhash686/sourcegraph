@@ -231,7 +231,7 @@ func TestDependencyIndexingSchedulerHandlerShouldSkipRepository(t *testing.T) {
 	mockScanner := NewMockPackageReferenceScanner()
 	mockGitServer := NewMockGitserverClient()
 	mockDBStore.WithFunc.SetDefaultReturn(mockDBStore)
-	mockDBStore.GetUploadByIDFunc.SetDefaultReturn(dbstore.Upload{ID: 42, RepositoryID: 51, Indexer: "lsif-tsc"}, true, nil)
+	mockDBStore.GetUploadByIDFunc.SetDefaultReturn(dbstore.Upload{ID: 42, RepositoryID: 51, Indexer: "lsif-typescript"}, true, nil)
 	mockDBStore.ReferencesForUploadFunc.SetDefaultReturn(mockScanner, nil)
 
 	indexEnqueuer := NewMockIndexEnqueuer()

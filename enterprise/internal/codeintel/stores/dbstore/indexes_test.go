@@ -49,7 +49,7 @@ func TestGetIndexByID(t *testing.T) {
 		},
 		LocalSteps:  []string{"echo hello"},
 		Root:        "/foo/bar",
-		Indexer:     "sourcegraph/lsif-tsc:latest",
+		Indexer:     "sourcegraph/lsif-typescript:latest",
 		IndexerArgs: []string{"lib/**/*.js", "test/**/*.js", "--allowJs", "--checkJs"},
 		Outfile:     "dump.lsif",
 		ExecutionLogs: []workerutil.ExecutionLogEntry{
@@ -376,7 +376,7 @@ func TestInsertIndexes(t *testing.T) {
 			},
 			LocalSteps:  []string{"echo hello"},
 			Root:        "/foo/bar",
-			Indexer:     "sourcegraph/lsif-tsc:latest",
+			Indexer:     "sourcegraph/lsif-typescript:latest",
 			IndexerArgs: []string{"lib/**/*.js", "test/**/*.js", "--allowJs", "--checkJs"},
 			Outfile:     "dump.lsif",
 			ExecutionLogs: []workerutil.ExecutionLogEntry{
@@ -433,7 +433,7 @@ func TestInsertIndexes(t *testing.T) {
 			},
 			LocalSteps:  []string{"echo hello"},
 			Root:        "/foo/bar",
-			Indexer:     "sourcegraph/lsif-tsc:latest",
+			Indexer:     "sourcegraph/lsif-typescript:latest",
 			IndexerArgs: []string{"lib/**/*.js", "test/**/*.js", "--allowJs", "--checkJs"},
 			Outfile:     "dump.lsif",
 			ExecutionLogs: []workerutil.ExecutionLogEntry{

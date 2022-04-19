@@ -1347,7 +1347,13 @@ Stores metadata about a code intel index job.
 
 **indexer**: The docker image used to run the index command (e.g. sourcegraph/lsif-go).
 
+<<<<<<< Updated upstream
 **indexer_args**: The command run inside the indexer image to produce the index file (e.g. [&#39;lsif-node&#39;, &#39;-p&#39;, &#39;.&#39;])
+||||||| constructed merge base
+**indexer_args**: The command run inside the indexer image to produce the index file (e.g. ['lsif-node', '-p', '.'])
+=======
+**indexer_args**: The command run inside the indexer image to produce the index file (e.g. ['lsif-typescript', '-p', '.'])
+>>>>>>> Stashed changes
 
 **local_steps**: A list of commands to run inside the indexer image prior to running the indexer command.
 

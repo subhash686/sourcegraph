@@ -80,7 +80,7 @@ This second step is easy in GitHub actions because our container can be used as 
 
 ```yaml
 jobs:
-  lsif-node:
+  lsif-typescript:
     # this line will prevent forks of this repo from uploading lsif indexes
     if: github.repository == '<insert your repo name>'
     runs-on: ubuntu-latest
@@ -90,9 +90,9 @@ jobs:
       - name: Install dependencies
         run: <install dependencies>
       - name: Generate LSIF data
-        uses: docker://sourcegraph/lsif-node:latest
+        uses: docker://sourcegraph/lsif-typescript:latest
         with:
-          args: lsif-tsc -p .
+          args: lsif-typescript -p .
       - name: Upload LSIF data
         uses: docker://sourcegraph/src-cli:latest
         with:
@@ -132,24 +132,24 @@ jobs:
           key: dependencies
 
 jobs:
-  lsif-node:
+  lsif-typescript:
     docker:
-      - image: sourcegraph/lsif-node:latest
+      - image: sourcegraph/lsif-typescript:latest
     steps:
       - checkout
       - restore_cache:
           keys:
             - dependencies
-      - run: lsif-tsc -p .
+      - run: lsif-typescript -p .
         # this will upload to Sourcegraph.com, you may need to substitute a different command
         # by default, we ignore failures to avoid disrupting CI pipelines with non-critical errors.
       - run: src lsif upload -github-token=<<parameters.github-token>> -ignore-upload-failure
 
 workflows:
-  lsif-node:
+  lsif-typescript:
     jobs:
       - install-deps
-      - lsif-node:
+      - lsif-typescript:
           requires:
             - install-deps
 ```

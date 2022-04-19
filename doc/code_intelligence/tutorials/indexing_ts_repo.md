@@ -74,11 +74,11 @@ Install the Sourcegraph CLI with
 
 
 
-### Install the lsif-node indexer
+### Install the lsif-typescript indexer
 
 Install the indexer by running:
 
-    npm install -g @sourcegraph/lsif-tsc
+    npm install -g @sourcegraph/lsif-typescript
     
 
 
@@ -88,7 +88,7 @@ Install the indexer by running:
 
 
 
-1. Navigate to the **_repo’s root folder_** (where the `package.json/tsconfig.json` is) and install depedencies with `npm install` then run `lsif-tsc -p .`
+1. Navigate to the **_repo’s root folder_** (where the `package.json/tsconfig.json` is) and install depedencies with `npm install` then run `lsif-typescript -p .`
 
 
 2. A `dump.lsif` file should have been generated. This is file you are going to upload to your Sourcegraph instance.

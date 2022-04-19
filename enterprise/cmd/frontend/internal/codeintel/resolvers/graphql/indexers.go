@@ -21,8 +21,8 @@ func (r *codeIntelIndexerResolver) URL() string {
 
 var (
 	lsifNode = codeIntelIndexerResolver{
-		name: "lsif-tsc",
-		urn:  "github.com/sourcegraph/lsif-node",
+		name: "lsif-typescript",
+		urn:  "github.com/sourcegraph/lsif-typescript",
 	}
 	msftNode = codeIntelIndexerResolver{
 		name: "msft/lsif-node",
@@ -147,7 +147,7 @@ var imageToIndexer = map[string]gql.CodeIntelIndexerResolver{
 	"sourcegraph/lsif-java":       &lsifJava,
 	"sourcegraph/lsif-go":         &lsifGo,
 	"sourcegraph/lsif-typescript": &lsifTypescript,
-	"sourcegraph/lsif-node":       &lsifNode,
+	"sourcegraph/lsif-typescript": &lsifNode,
 	"sourcegraph/lsif-clang":      &lsifClang,
 	"davidrjenni/lsif-php":        &lsifPHP,
 	"sourcegraph/lsif-rust":       &rustAnalyzer,

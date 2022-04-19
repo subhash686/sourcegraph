@@ -24,7 +24,7 @@ index_jobs:
       - --no-animation
   -
     root: web/
-    indexer: lsif-tsc
+    indexer: lsif-typescript
     indexer_args: ['-p', '.']
     outfile: lsif.dump
 `
@@ -58,7 +58,7 @@ func TestUnmarshalYAML(t *testing.T) {
 			{
 				Steps:       nil,
 				Root:        "web/",
-				Indexer:     "lsif-tsc",
+				Indexer:     "lsif-typescript",
 				IndexerArgs: []string{"-p", "."},
 				Outfile:     "lsif.dump",
 			},

@@ -2,59 +2,63 @@
 
 This guide is meant to provide specific instructions to get you producing index data in LSIF as quickly as possible for JavaScript and TypeScript codebases. 
 
-## Automated indexing
+## Indexing using Docker images
 
-We provide the docker images `sourcegraph/lsif-node` and `sourcegraph/src-cli` to make automating this process in your favorite CI framework as easy as possible. Note that the `lsif-node` image bundles `src-cli` so the second image may not be necessary.
+We provide a Docker image `sourcegraph/lsif-typescript` for easy automation in CI.
 
-Here's some examples in a couple popular frameworks, just substitute the indexer and upload commands with what works for your project locally:
+Here are examples for two popular CI services, just substitute the indexer and upload commands with what works for your project locally:
 
 ### GitHub Actions
 
 ```yaml
 jobs:
-  lsif-node:
-    # this line will prevent forks of this repo from uploading lsif indexes
+  lsif-typescript:
+    # prevent forks of this repo from uploading lsif indexes
     if: github.repository == '<insert your repo name>'
     runs-on: ubuntu-latest
-    container: sourcegraph/lsif-node:latest
+    container: sourcegraph/lsif-typescript:latest
     steps:
-      - uses: actions/checkout@v1
+      - uses: actions/checkout@v3
       - name: Install dependencies
         run: npm install
       - name: Generate LSIF data
-        run: lsif-tsc -p .
+        run: lsif-typescript index
       - name: Upload LSIF data
-        # this will upload to Sourcegraph.com, you may need to substitute a different command
-        # by default, we ignore failures to avoid disrupting CI pipelines with non-critical errors.
+        # src-cli (https://github.com/sourcegraph/src-cli) is bundled in the image
+        # indexes are uploaded to Sourcegraph.com by default
+        # we ignore failures to avoid disrupting CI pipelines with non-critical errors
         run: src lsif upload -github-token=${{ secrets.GITHUB_TOKEN }}
 ```
 
-Note that if you need to install your dependencies in a custom container, you can use our containers as github actions. Try these steps instead:
+Note that if you need to install your dependencies in a custom container, you can use our containers as GitHub Actions.
+Try these steps instead:
 
 ```yaml
 jobs:
-  lsif-node:
-    # this line will prevent forks of this repo from uploading lsif indexes
+  lsif-typescript:
+    # prevent forks of this repo from uploading lsif indexes
     if: github.repository == '<insert your repo name>'
     runs-on: ubuntu-latest
     container: my-awesome-container
     steps:
-      - uses: actions/checkout@v1
+      - uses: actions/checkout@v3
       - name: Install dependencies
         run: <install dependencies>
       - name: Generate LSIF data
-        uses: docker://sourcegraph/lsif-node:latest
+        uses: docker://sourcegraph/lsif-typescript:latest
         with:
-          args: lsif-tsc -p .
+          args: lsif-typescript index
       - name: Upload LSIF data
         uses: docker://sourcegraph/src-cli:latest
         with:
-          # this will upload to Sourcegraph.com, you may need to substitute a different command
-          # by default, we ignore failures to avoid disrupting CI pipelines with non-critical errors.
+          # indexes are uploaded to Sourcegraph.com by default
+          # we ignore failures to avoid disrupting CI pipelines with non-critical errors
           args: lsif upload -github-token=${{ secrets.GITHUB_TOKEN }}
 ```
 
 The following projects have example GitHub Action workflows to generate and upload LSIF indexes.
+
+<!-- TODO: [Varun] Update these projects -->
 
 - [elastic/kibana](https://github.com/sourcegraph-codeintel-showcase/kibana/blob/7ed559df0e2036487ae6d606e9ffa29d90d49e38/.github/workflows/lsif.yml)
 - [lodash/lodash](https://github.com/sourcegraph-codeintel-showcase/lodash/blob/b90ea221bd1b1e036f2dfcd199a2327883f9451f/.github/workflows/lsif.yml)
@@ -66,24 +70,29 @@ The following projects have example GitHub Action workflows to generate and uplo
 version: 2.1
 
 jobs:
-  lsif-node:
+  lsif-typescript:
     docker:
-      - image: sourcegraph/lsif-node:latest
+      - image: sourcegraph/lsif-typescript:latest
     steps:
       - checkout
       - run: npm install
-      - run: lsif-tsc -p .
-        # this will upload to Sourcegraph.com, you may need to substitute a different command
-        # by default, we ignore failures to avoid disrupting CI pipelines with non-critical errors.
+      - run: lsif-typescript index
+        # src-cli (https://github.com/sourcegraph/src-cli) is bundled in the image
+        # indexes are uploaded to Sourcegraph.com by default
+        # we ignore failures to avoid disrupting CI pipelines with non-critical errors
       - run: src lsif upload -github-token=<<parameters.github-token>>
 
 workflows:
-  lsif-node:
+  lsif-typescript:
     jobs:
-      - lsif-node
+      - lsif-typescript
 ```
 
-Note that if you need to install your dependencies in a custom container, may need to use CircleCI's caching features to share the build environment with our container. It may alternately be easier to add our tools to your container, but here's an example using caches:
+If you need to install your dependencies in a custom container,
+you will need to use CircleCI's caching features to share the build environment with our container.
+Alternately, it may be easier to add our tools to your container.
+
+Here's an example using caches:
 
 ```yaml
 jobs:
@@ -99,27 +108,30 @@ jobs:
           key: dependencies
 
 jobs:
-  lsif-node:
+  lsif-typescript:
     docker:
-      - image: sourcegraph/lsif-node:latest
+      - image: sourcegraph/lsif-typescript:latest
     steps:
       - checkout
       - restore_cache:
           keys:
             - dependencies
-      - run: lsif-tsc -p .
-        # this will upload to Sourcegraph.com, you may need to substitute a different command
-        # by default, we ignore failures to avoid disrupting CI pipelines with non-critical errors.
+      - run: lsif-typescript index
+        # src-cli (https://github.com/sourcegraph/src-cli) is bundled in the image
+        # indexes are uploaded to Sourcegraph.com by default
+        # we ignore failures to avoid disrupting CI pipelines with non-critical errors
       - run: src lsif upload -github-token=<<parameters.github-token>>
 
 workflows:
-  lsif-node:
+  lsif-typescript:
     jobs:
       - install-deps
-      - lsif-node:
+      - lsif-typescript:
           requires:
             - install-deps
 ```
+
+<!-- TODO: [Varun] Fix these projects... -->
 
 The following projects have example CircleCI configurations to generate and upload LSIF indexes.
 
@@ -137,14 +149,17 @@ services:
 
 jobs:
   include:
-    - stage: lsif-node
-      # this will upload to Sourcegraph.com, you may need to substitute a different command
-      # by default, we ignore failures to avoid disrupting CI pipelines with non-critical errors.
+    - stage: lsif-typescript
+      # src-cli (https://github.com/sourcegraph/src-cli) is bundled in the image
+      # indexes are uploaded to Sourcegraph.com by default
+      # we ignore failures to avoid disrupting CI pipelines with non-critical errors
       script:
       - |
-        docker run --rm -v $(pwd):/src -w /src sourcegraph/lsif-node:latest /bin/sh -c \
-          "lsif-tsc -p .; src lsif upload -github-token=$GITHUB_TOKEN"
+        docker run --rm -v $(pwd):/src -w /src sourcegraph/lsif-typescript:latest /bin/sh -c \
+          "lsif-typescript index; src lsif upload -github-token=$GITHUB_TOKEN"
 ```
+
+<!-- TODO: [Varun] Fix these projects. -->
 
 The following projects have example Travis CI configurations to generate and upload LSIF indexes.
 
@@ -157,17 +172,9 @@ The following projects have example Travis CI configurations to generate and upl
 
 Manual indexing is valuable as a proof of concept, however, it may be difficult to keep indexes up to date and enable cross repository navigation. 
 
-1. Install [lsif-node](https://github.com/sourcegraph/lsif-node) with `npm install -g @sourcegraph/lsif-tsc` or your favorite method of installing npm packages.
+1. Install [lsif-typescript](https://github.com/sourcegraph/lsif-typescript) with `npm install -g @sourcegraph/lsif-typescript` or your favorite method of installing npm packages.
 
-1. Install the [Sourcegraph CLI](https://github.com/sourcegraph/src-cli) with
-
-   ```
-   curl -L https://sourcegraph.com/.api/src-cli/src_linux_amd64 -o /usr/local/bin/src
-   chmod +x /usr/local/bin/src
-   ```
-
-   - **macOS**: replace `linux` with `darwin` in the URL
-   - **Windows**: visit [the CLI's repo](https://github.com/sourcegraph/src-cli) for further instructions
+1. Install the [Sourcegraph CLI](https://github.com/sourcegraph/src-cli#installation).
 
 1. `cd` into your project's root (where the package.json/tsconfig.json) and run the following:
 
@@ -175,15 +182,14 @@ Manual indexing is valuable as a proof of concept, however, it may be difficult 
    # install your projects dependencies with npm or yarn
    npm install
    # for typescript projects
-   lsif-tsc -p .
-   # for javascript projects
-   lsif-tsc **/*.js --allowJs --checkJs
+   lsif-typescript index
    ```
+   <!-- TODO: [Varun] What about Javascript projects? -->
 > **_NOTE:_** The `npm install` step is required to correctly typecheck the codebase and to enable cross-repo navigation.
 
-If you are working with a mono-repo that contains different projects, you may use the above procedure in sub projects within the monorepo. For example, Project A is located in `<repo root>/proja/` and Project B is located in `<repo root>/projb/`. You just need to invoke `lsif-tsc` and `src lsif upload` in both `./proja` and `./projb` directories to generate and upload a precise code intelligence index for each project.
+If you are working with a mono-repo that contains different projects, you may use the above procedure in sub projects within the monorepo. For example, Project A is located in `<repo root>/proja/` and Project B is located in `<repo root>/projb/`. You just need to invoke `lsif-typescript` and `src lsif upload` in both `./proja` and `./projb` directories to generate and upload a precise code intelligence index for each project.
 
-Check out the tool's [documentation](https://github.com/microsoft/lsif-node) if you're having trouble getting `lsif-tsc` to work. It accepts any [options](https://www.typescriptlang.org/docs/handbook/compiler-options.html) `tsc` does, so it shouldn't be too hard to get it running on your project.
+Check out the tool's [documentation](https://github.com/microsoft/lsif-typescript) if you're having trouble getting `lsif-typescript` to work. It accepts any [options](https://www.typescriptlang.org/docs/handbook/compiler-options.html) `tsc` does, so it shouldn't be too hard to get it running on your project.
 
 1. Upload the data to a Sourcegraph instance with
 
