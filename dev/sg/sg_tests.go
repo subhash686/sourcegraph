@@ -65,7 +65,7 @@ func testExec(ctx context.Context, args []string) error {
 func constructTestCmdLongHelp() string {
 	var out strings.Builder
 
-	fmt.Fprintf(&out, "  Runs the given testsuite.")
+	fmt.Fprintf(&out, "  Runs the given testsuite from sg configuration.")
 
 	// Attempt to parse config to list available testsuites, but don't fail on
 	// error, because we should never error when the user wants --help output.
@@ -77,7 +77,7 @@ func constructTestCmdLongHelp() string {
 	}
 
 	fmt.Fprintf(&out, "\n\n")
-	fmt.Fprintf(&out, "AVAILABLE TESTSUITES IN %s%s%s:\n", output.StyleBold, configFile, output.StyleReset)
+	fmt.Fprintf(&out, "AVAILABLE TESTSUITES IN `%s`:\n", configFile)
 	fmt.Fprintf(&out, "\n")
 
 	var names []string
@@ -85,7 +85,7 @@ func constructTestCmdLongHelp() string {
 		names = append(names, name)
 	}
 	sort.Strings(names)
-	fmt.Fprint(&out, strings.Join(names, "\n"))
+	fmt.Fprint(&out, "    "+strings.Join(names, "\n    "))
 
 	return out.String()
 }

@@ -82,14 +82,14 @@ func constructRunCmdLongHelp() string {
 	}
 
 	fmt.Fprintf(&out, "\n")
-	fmt.Fprintf(&out, "AVAILABLE COMMANDS IN %s%s%s:\n", output.StyleBold, configFile, output.StyleReset)
+	fmt.Fprintf(&out, "AVAILABLE COMMANDS IN `%s`:\n\n", configFile)
 
 	var names []string
 	for name := range config.Commands {
 		names = append(names, name)
 	}
 	sort.Strings(names)
-	fmt.Fprint(&out, strings.Join(names, "\n"))
+	fmt.Fprint(&out, "    "+strings.Join(names, "\n    "))
 
 	return out.String()
 }

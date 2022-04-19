@@ -104,7 +104,7 @@ Use this to start your Sourcegraph environment!
 	}
 
 	fmt.Fprintf(&out, "\n")
-	fmt.Fprintf(&out, "AVAILABLE COMMANDSETS IN %s%s%s:\n", output.StyleBold, configFile, output.StyleReset)
+	fmt.Fprintf(&out, "AVAILABLE COMMANDSETS IN `%s`:\n\n", configFile)
 
 	var names []string
 	for name := range config.Commandsets {
@@ -118,7 +118,7 @@ Use this to start your Sourcegraph environment!
 		}
 	}
 	sort.Strings(names)
-	fmt.Fprint(&out, strings.Join(names, "\n"))
+	fmt.Fprint(&out, "    "+strings.Join(names, "\n    "))
 
 	return out.String()
 }

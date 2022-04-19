@@ -29,12 +29,11 @@ func constructLiveCmdLongHelp() string {
 	var out strings.Builder
 
 	fmt.Fprintf(&out, "Prints the Sourcegraph version deployed to the given environment.")
-	fmt.Fprintf(&out, "\n")
-	fmt.Fprintf(&out, "\n")
-	fmt.Fprintf(&out, "AVAILABLE PRESET ENVIRONMENTS:\n")
+	fmt.Fprintf(&out, "\n\n")
+	fmt.Fprintf(&out, "AVAILABLE PRESET ENVIRONMENTS:\n\n")
 
 	for _, name := range environmentNames() {
-		fmt.Fprintf(&out, "  %s\n", name)
+		fmt.Fprintf(&out, "    %s\n", name)
 	}
 
 	return out.String()

@@ -13,5 +13,5 @@ func ConstructLongHelp() string {
 		names = append(names, fmt.Sprintf("  %s", name))
 	}
 
-	return fmt.Sprintf("AVAILABLE SCHEMAS\n%s", strings.Join(names, "\n"))
+	return fmt.Sprintf("AVAILABLE SCHEMAS:\n\n    %s", strings.Join(names, "\n    "))
 }

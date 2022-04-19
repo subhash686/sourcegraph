@@ -20,16 +20,12 @@ var (
 )
 
 var generateCommand = &cli.Command{
-	Name:      "generate",
-	ArgsUsage: "[target]",
-	Usage:     "Run code and docs generation tasks",
-	Description: `Run code and docs generation tasks - if no target is provided, all target are run with default arguments.
-
-Verbose mode can be enabled with the global verbose flag, e.g.
-
-	sg --verbose generate ...
-`,
-	Category: CategoryDev,
+	Name:        "generate",
+	ArgsUsage:   "[target]",
+	UsageText:   "sg --verbose generate ... # Enable verbose output",
+	Usage:       "Run code and docs generation tasks",
+	Description: "If no target is provided, all target are run with default arguments.",
+	Category:    CategoryDev,
 	Flags: []cli.Flag{
 		&cli.BoolFlag{
 			Name:        "quiet",
