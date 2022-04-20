@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -14,13 +15,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/inconshreveable/log15"
-
 	dependenciesStore "github.com/sourcegraph/sourcegraph/internal/codeintel/dependencies/store"
 	"github.com/sourcegraph/sourcegraph/internal/conf/reposource"
 	"github.com/sourcegraph/sourcegraph/internal/extsvc/jvmpackages/coursier"
 	"github.com/sourcegraph/sourcegraph/internal/repos"
-	"github.com/sourcegraph/sourcegraph/internal/vcs"
 	"github.com/sourcegraph/sourcegraph/lib/errors"
 	"github.com/sourcegraph/sourcegraph/schema"
 )
@@ -35,213 +33,84 @@ const (
 	jvmMajorVersion0 = 44
 )
 
-// placeholderMavenDependency is used to set GIT_AUTHOR_NAME for git commands
-// that don't create commits or tags. The name of this dependency should never
-// be publicly visible so it can have any random value.
-var placeholderMavenDependency = func() *reposource.MavenDependency {
-	d, err := reposource.ParseMavenDependency("com.sourcegraph:sourcegraph:1.0.0")
+func NewJVMPackagesSyncer(
+	connection schema.JVMPackagesConnection,
+	store repos.DependenciesStore,
+) VCSSyncer {
+	// placeholder is used to set GIT_AUTHOR_NAME for git commands
+	// that don't create commits or tags. The name of this dependency should never
+	// be publicly visible so it can have any random value.
+	placeholder, err := reposource.ParseMavenDependency("com.sourcegraph:sourcegraph:1.0.0")
 	if err != nil {
-		panic(err)
+		panic(fmt.Sprintf("expected placeholder package to parse but got %v", err))
 	}
-	return d
-}()
 
-type JVMPackagesSyncer struct {
-	Config    *schema.JVMPackagesConnection
-	DepsStore repos.DependenciesStore
-}
-
-var _ VCSSyncer = &JVMPackagesSyncer{}
-
-func (s *JVMPackagesSyncer) MavenDependencies() []string {
-	if s.Config == nil || s.Config.Maven == nil || s.Config.Maven.Dependencies == nil {
-		return nil
+	var configDeps []string
+	if connection.Maven != nil {
+		configDeps = connection.Maven.Dependencies
 	}
-	return s.Config.Maven.Dependencies
+
+	return &vcsDependenciesSyncer{
+		typ:         "jvm_packages",
+		scheme:      dependenciesStore.JVMPackagesScheme,
+		placeholder: placeholder,
+		store:       store,
+		configDeps:  configDeps,
+		syncer:      &jvmPackagesSyncer{config: &connection},
+	}
 }
 
-func (s *JVMPackagesSyncer) Type() string {
-	return "jvm_packages"
+type jvmPackagesSyncer struct {
+	config *schema.JVMPackagesConnection
 }
 
-// IsCloneable checks to see if the VCS remote URL is cloneable. Any non-nil
-// error indicates there is a problem.
-func (s *JVMPackagesSyncer) IsCloneable(ctx context.Context, remoteURL *vcs.URL) error {
-	dependencies, err := s.packageDependencies(ctx, remoteURL.Path)
+func (jvmPackagesSyncer) ParseDependency(dep string) (reposource.PackageDependency, error) {
+	return reposource.ParseMavenDependency(dep)
+}
+
+func (jvmPackagesSyncer) ParseDependencyFromRepoName(repoName string) (reposource.PackageDependency, error) {
+	mod, err := reposource.ParseMavenModule(repoName)
 	if err != nil {
-		return err
+		return nil, err
+	}
+	return &reposource.MavenDependency{MavenModule: mod}, nil
+}
+
+func (s *jvmPackagesSyncer) Get(ctx context.Context, name, version string) (reposource.PackageDependency, error) {
+	dep, err := reposource.ParseMavenDependency(name + ":" + version)
+	if err != nil {
+		return nil, err
 	}
 
-	for _, dependency := range dependencies {
-		_, err := coursier.FetchSources(ctx, s.Config, dependency)
-		if err != nil {
-			// Temporary: We shouldn't need both these checks but we're continuing to see the
-			// error in production logs which implies `HasType` is not matching.
-			if errors.HasType(err, &coursier.ErrNoSources{}) || strings.Contains(err.Error(), "no sources for dependency") {
-				// We can't do anything and it's leading to increases in our
-				// src_repoupdater_sched_error alert firing more often.
-				continue
-			}
-			return err
-		}
+	err = coursier.Exists(ctx, s.config, dep)
+	if err != nil {
+		return nil, err
+	}
+
+	return dep, nil
+}
+
+func (s *jvmPackagesSyncer) Download(ctx context.Context, dir string, dep reposource.PackageDependency) error {
+	tgz, err := jvm.FetchSources(ctx, s.client, dep.(*reposource.NpmDependency))
+	if err != nil {
+		return errors.Wrap(err, "fetch tarball")
+	}
+	defer tgz.Close()
+
+	if err = decompressTgz(tgz, dir); err != nil {
+		return errors.Wrapf(err, "failed to decompress gzipped tarball for %s", dep.PackageManagerSyntax())
 	}
 
 	return nil
 }
 
-// CloneCommand returns the command to be executed for cloning from remote.
-// There is no external tool that performs all the step for creating a JVM
-// package repository so the actual cloning happens inside this method and the
-// returned command is a no-op. This means that the web UI can't display a
-// helpful progress bar while cloning JVM package repositories, but that's an
-// acceptable tradeoff we're willing to make.
-func (s *JVMPackagesSyncer) CloneCommand(ctx context.Context, remoteURL *vcs.URL, bareGitDirectory string) (*exec.Cmd, error) {
-	err := os.MkdirAll(bareGitDirectory, 0755)
-	if err != nil {
-		return nil, err
-	}
-
-	cmd := exec.CommandContext(ctx, "git", "--bare", "init")
-	if _, err := runCommandInDirectory(ctx, cmd, bareGitDirectory, placeholderMavenDependency); err != nil {
-		return nil, err
-	}
-
-	// The Fetch method is responsible for cleaning up temporary directories.
-	if err := s.Fetch(ctx, remoteURL, GitDir(bareGitDirectory)); err != nil {
-		return nil, err
-	}
-
-	// no-op command to satisfy VCSSyncer interface, see docstring for more details.
-	return exec.CommandContext(ctx, "git", "--version"), nil
-}
-
-// Fetch adds git tags for newly added dependency versions and removes git tags
-// for deleted versions.
-func (s *JVMPackagesSyncer) Fetch(ctx context.Context, remoteURL *vcs.URL, dir GitDir) error {
-	dependencies, err := s.packageDependencies(ctx, remoteURL.Path)
-	if err != nil {
-		return err
-	}
-
-	tags := map[string]bool{}
-
-	out, err := runCommandInDirectory(ctx, exec.CommandContext(ctx, "git", "tag"), string(dir), placeholderMavenDependency)
-	if err != nil {
-		return err
-	}
-
-	for _, line := range strings.Split(out, "\n") {
-		if len(line) == 0 {
-			continue
-		}
-		tags[line] = true
-	}
-
-	for i, dependency := range dependencies {
-		if tags[dependency.GitTagFromVersion()] {
-			continue
-		}
-		// the gitPushDependencyTag method is responsible for cleaning up temporary directories.
-		if err := s.gitPushDependencyTag(ctx, string(dir), dependency, i == 0); err != nil {
-			return errors.Wrapf(err, "error pushing dependency %q", dependency.PackageManagerSyntax())
-		}
-	}
-
-	dependencyTags := make(map[string]struct{}, len(dependencies))
-	for _, dependency := range dependencies {
-		dependencyTags[dependency.GitTagFromVersion()] = struct{}{}
-	}
-
-	for tag := range tags {
-		if _, isDependencyTag := dependencyTags[tag]; !isDependencyTag {
-			cmd := exec.CommandContext(ctx, "git", "tag", "-d", tag)
-			if _, err := runCommandInDirectory(ctx, cmd, string(dir), placeholderMavenDependency); err != nil {
-				log15.Error("Failed to delete git tag", "error", err, "tag", tag)
-				continue
-			}
-		}
-	}
-
-	return nil
-}
-
-// RemoteShowCommand returns the command to be executed for showing remote.
-func (s *JVMPackagesSyncer) RemoteShowCommand(ctx context.Context, remoteURL *vcs.URL) (cmd *exec.Cmd, err error) {
-	return exec.CommandContext(ctx, "git", "remote", "show", "./"), nil
-}
-
-// packageDependencies returns the list of JVM dependencies that belong to the given URL path.
-// The returned package dependencies are sorted by semantic versioning.
-// A URL maps to a single JVM package, which may contain multiple versions (one git tag per version).
-func (s *JVMPackagesSyncer) packageDependencies(ctx context.Context, repoUrlPath string) (dependencies []*reposource.MavenDependency, err error) {
-	module, err := reposource.ParseMavenModule(repoUrlPath)
-	if err != nil {
-		return nil, err
-	}
-
-	var (
-		totalConfigMatched int
-		timedout           []*reposource.MavenDependency
-	)
-	for _, dependency := range s.MavenDependencies() {
-		if module.MatchesDependencyString(dependency) {
-			dependency, err := reposource.ParseMavenDependency(dependency)
-			if err != nil {
-				return nil, err
-			}
-
-			exists, err := coursier.Exists(ctx, s.Config, dependency)
-			if exists {
-				totalConfigMatched++
-				dependencies = append(dependencies, dependency)
-			} else if errors.Is(err, context.DeadlineExceeded) {
-				timedout = append(timedout, dependency)
-			}
-			// Silently ignore non-existent dependencies because
-			// they are already logged out in the `GetRepo` method
-			// in internal/repos/jvm_packages.go.
-		}
-	}
-
-	if len(timedout) > 0 {
-		log15.Warn("non-zero number of timed-out coursier invocations", "count", len(timedout), "dependencies", timedout)
-	}
-
-	dbDeps, err := s.DepsStore.ListDependencyRepos(ctx, dependenciesStore.ListDependencyReposOpts{
-		Scheme:      dependenciesStore.JVMPackagesScheme,
-		Name:        repoUrlPath,
-		NewestFirst: true,
-	})
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to get JVM dependency repos from database", "repoPath", repoUrlPath)
-	}
-
-	var totalDBMatched int
-	for _, dep := range dbDeps {
-		parsedModule, err := reposource.ParseMavenModule(dep.Name)
-		if err != nil {
-			log15.Warn("error parsing maven module", "error", err, "module", dep.Name)
-			continue
-		}
-		if module.Equal(parsedModule) {
-			dependency := &reposource.MavenDependency{
-				MavenModule: parsedModule,
-				Version:     dep.Version,
-			}
-			// we dont call coursier.Exists here, as existance should be verified by repo-updater
-			totalDBMatched++
-			dependencies = append(dependencies, dependency)
-		}
-	}
-
-	if len(dependencies) == 0 {
-		return nil, errors.Errorf("no JVM dependencies for URL path %s", repoUrlPath)
-	}
-
-	log15.Info("fetched maven artifact for repo path", "repoPath", repoUrlPath, "totalDB", totalDBMatched, "totalConfig", totalConfigMatched)
-	reposource.SortDependencies(dependencies)
-	return dependencies, nil
-}
+// TODO:
+// 1. We need to make sure that coursier.Exists returns errors that can be differentiated between NotFound or everything else.
+// 2. Implement Get with coursier.Exists
+// 3. Implement Download with FetchSources
+// 4. Check that sorting isn't needed and that removing won't break anything
+// 5. Manually test.
+// 6. Write / refactor tests.
 
 // gitPushDependencyTag pushes a git tag to the given bareGitDirectory path. The
 // tag points to a commit that adds all sources of given dependency. When

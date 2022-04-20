@@ -36,16 +36,12 @@ func NewGoModulesSyncer(
 		placeholder: placeholder,
 		store:       store,
 		configDeps:  connection.Dependencies,
-		syncer: &goModulesSyncer{
-			client:     client,
-			connection: connection,
-		},
+		syncer:      &goModulesSyncer{client: client},
 	}
 }
 
 type goModulesSyncer struct {
-	client     *gomodproxy.Client
-	connection *schema.GoModulesConnection
+	client *gomodproxy.Client
 }
 
 func (goModulesSyncer) ParseDependency(dep string) (reposource.PackageDependency, error) {

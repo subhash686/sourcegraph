@@ -43,16 +43,11 @@ func NewNpmPackagesSyncer(
 		placeholder: placeholder,
 		store:       store,
 		configDeps:  connection.Dependencies,
-		syncer: &npmPackagesSyncer{
-			connection: connection,
-			client:     client,
-		},
+		syncer:      &npmPackagesSyncer{client: client},
 	}
 }
 
 type npmPackagesSyncer struct {
-	// Configuration object describing the connection to the npm registry.
-	connection schema.NpmPackagesConnection
 	// The client to use for making queries against npm.
 	client npm.Client
 }
@@ -62,14 +57,6 @@ func (npmPackagesSyncer) ParseDependency(dep string) (reposource.PackageDependen
 }
 
 func (npmPackagesSyncer) ParseDependencyFromRepoName(repoName string) (reposource.PackageDependency, error) {
-	pkg, err := reposource.ParseNpmPackageFromRepoURL(repoName)
-	if err != nil {
-		return nil, err
-	}
-	return &reposource.NpmDependency{NpmPackage: pkg}, nil
-}
-
-func (s *npmPackagesSyncer) Parse(repoName string) (reposource.PackageDependency, error) {
 	pkg, err := reposource.ParseNpmPackageFromRepoURL(repoName)
 	if err != nil {
 		return nil, err
