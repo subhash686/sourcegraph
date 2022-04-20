@@ -57,7 +57,7 @@ type Service struct {
 	// TODO pick a design which doesn't directly depend on Command. Probably
 	// adding a relevant function to the gitserver client. This is only used
 	// by FeatHybrid.
-	GitOutput func(ctx context.Context, repo api.RepoName, cmd string, args ...string) ([]byte, error)
+	GitOutput func(ctx context.Context, repo api.RepoName, args ...string) ([]byte, error)
 
 	Log log15.Logger
 }
@@ -228,7 +228,7 @@ func (s *Service) search(ctx context.Context, p *protocol.Request, sender matchS
 		}
 		// TODO from this point onwards we should cache keyed by indexed + p.Commit
 		if ok {
-			out, err := s.GitOutput(ctx, p.Repo, "git", "diff", "-z", "--name-status", "--no-renames", string(p.Commit), string(indexed))
+			out, err := s.GitOutput(ctx, p.Repo, "diff", "-z", "--name-status", "--no-renames", string(p.Commit), string(indexed))
 			if err != nil {
 				return err
 			}
@@ -304,7 +304,6 @@ func (s *Service) search(ctx context.Context, p *protocol.Request, sender matchS
 				return nil
 			}
 
-			// TODO zoektSearch
 			// TODO fetch paths unindexedSearch and search them
 		}
 	}

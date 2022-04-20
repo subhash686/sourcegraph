@@ -80,7 +80,7 @@ Hello world example in go`, typeFile},
 	wantRaw := `
 added.md:1:hello world I am added
 changed.go:6:	fmt.Println("Hello world")
-unchanged.md:3:# Hello World
+unchanged.md:1:# Hello World
 unchanged.md:3:Hello world example in go
 `
 
@@ -102,7 +102,7 @@ unchanged.md:3:Hello world example in go
 
 	// we expect one command against git, lets just fake it.
 	ts := httptest.NewServer(&search.Service{
-		GitOutput: func(ctx context.Context, repo api.RepoName, cmd string, args ...string) ([]byte, error) {
+		GitOutput: func(ctx context.Context, repo api.RepoName, args ...string) ([]byte, error) {
 			want := []string{"diff", "-z", "--name-status", "--no-renames", "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef", "indexedfdeadbeefdeadbeefdeadbeefdeadbeef"}
 			if d := cmp.Diff(want, args); d != "" {
 				return nil, errors.Errorf("git diff mismatch (-want, +got):\n%s", d)
@@ -138,8 +138,8 @@ unchanged.md:3:Hello world example in go
 	}
 
 	sort.Sort(sortByPath(m))
-	got := strings.Split(strings.TrimSpace(toString(m)), "\n")
-	want := strings.Split(strings.TrimSpace(wantRaw), "\n")
+	got := strings.TrimSpace(toString(m))
+	want := strings.TrimSpace(wantRaw)
 	if d := cmp.Diff(want, got); d != "" {
 		t.Fatalf("mismatch (-want, +got):\n%s", d)
 	}
@@ -152,8 +152,9 @@ func newZoekt(t *testing.T, repo *zoekt.Repository, files map[string]struct {
 	var docs []zoekt.Document
 	for name, file := range files {
 		docs = append(docs, zoekt.Document{
-			Name:    name,
-			Content: []byte(file.body),
+			Name:     name,
+			Content:  []byte(file.body),
+			Branches: []string{"HEAD"},
 		})
 	}
 	sort.Slice(docs, func(i, j int) bool {
