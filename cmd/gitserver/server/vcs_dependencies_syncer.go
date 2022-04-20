@@ -210,6 +210,7 @@ func (ps *vcsDependenciesSyncer) versions(ctx context.Context, packageName strin
 	for _, depRepo := range depRepos {
 		versions = append(versions, depRepo.Version)
 	}
+
 	return versions, nil
 }
 

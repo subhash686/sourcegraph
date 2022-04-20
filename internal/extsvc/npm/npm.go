@@ -208,11 +208,10 @@ func (client *HTTPClient) GetDependencyInfo(ctx context.Context, dep *reposource
 }
 
 func (client *HTTPClient) FetchTarball(ctx context.Context, dep *reposource.NpmDependency) (io.ReadCloser, error) {
-	info, err := client.GetDependencyInfo(ctx, dep)
-	if err != nil {
-		return nil, err
+	if dep.TarballURL == "" {
+		return nil, errors.New("empty TarballURL")
 	}
-	return client.makeGetRequest(ctx, info.Dist.TarballURL)
+	return client.makeGetRequest(ctx, dep.TarballURL)
 }
 
 var _ Client = &HTTPClient{}

@@ -12,7 +12,7 @@ import (
 	"golang.org/x/mod/module"
 	modzip "golang.org/x/mod/zip"
 
-	"github.com/sourcegraph/sourcegraph/internal/codeintel/dependencies/store"
+	depsStore "github.com/sourcegraph/sourcegraph/internal/codeintel/dependencies/store"
 	"github.com/sourcegraph/sourcegraph/internal/conf/reposource"
 	"github.com/sourcegraph/sourcegraph/internal/extsvc/gomodproxy"
 	"github.com/sourcegraph/sourcegraph/internal/repos"
@@ -23,7 +23,7 @@ import (
 
 func NewGoModulesSyncer(
 	connection *schema.GoModulesConnection,
-	depsStore repos.DependenciesStore,
+	store repos.DependenciesStore,
 	client *gomodproxy.Client,
 ) VCSSyncer {
 	placeholder, err := reposource.ParseGoDependency("sourcegraph.com/placeholder@v0.0.0")
@@ -32,9 +32,9 @@ func NewGoModulesSyncer(
 	}
 
 	return &vcsDependenciesSyncer{
-		store:       depsStore,
+		store:       store,
 		typ:         "go_modules",
-		scheme:      store.GoModulesScheme,
+		scheme:      depsStore.GoModulesScheme,
 		placeholder: placeholder,
 		syncer: &goModulesSyncer{
 			client:     client,
