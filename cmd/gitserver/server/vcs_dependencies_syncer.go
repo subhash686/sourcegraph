@@ -23,10 +23,11 @@ type vcsDependenciesSyncer struct {
 	scheme      string
 	placeholder reposource.PackageDependency
 	syncer      interface {
-		Exists(ctx context.Context, name, version string) error
-		FromRepoName(repoName string) (reposource.PackageDependency, error)
-		FromRepoNameAndVersion(name, version string) (reposource.PackageDependency, error)
+		// Get verifies that a dependency at a specific version exists in the package host and
+		// returns it if so. Otherwise it returns an error that passes errcode.IsNotFound().
+		Get(ctx context.Context, name, version string) (reposource.PackageDependency, error)
 		Download(ctx context.Context, dir string, dep reposource.PackageDependency) error
+		FromRepoName(repoName string) (reposource.PackageDependency, error)
 		ConfigVersions(packageName string) ([]string, error)
 	}
 }
@@ -77,17 +78,12 @@ func (ps *vcsDependenciesSyncer) Fetch(ctx context.Context, remoteURL *vcs.URL, 
 
 	cloneable := make([]reposource.PackageDependency, 0, len(versions))
 	for _, version := range versions {
-		err = ps.syncer.Exists(ctx, depName, version)
+		d, err := ps.syncer.Get(ctx, depName, version)
 		if err != nil {
 			if errcode.IsNotFound(err) {
 				log15.Warn("skipping missing dependency", "dep", depName, "version", version, "type", ps.typ)
 				continue
 			}
-			return err
-		}
-		d, err := ps.syncer.FromRepoNameAndVersion(depName, version)
-		if err != nil {
-			// skip?
 			return err
 		}
 		cloneable = append(cloneable, d)

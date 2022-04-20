@@ -52,13 +52,12 @@ func (s *goModulesSyncer) FromRepoName(repoName string) (reposource.PackageDepen
 	return reposource.ParseGoDependencyFromRepoName(repoName)
 }
 
-func (s *goModulesSyncer) FromRepoNameAndVersion(name, version string) (reposource.PackageDependency, error) {
-	return reposource.ParseGoDependency(name + "@" + version)
-}
-
-func (s *goModulesSyncer) Exists(ctx context.Context, name, version string) error {
-	_, err := s.client.GetVersion(ctx, name, version)
-	return err
+func (s *goModulesSyncer) Get(ctx context.Context, name, version string) (reposource.PackageDependency, error) {
+	mod, err := s.client.GetVersion(ctx, name, version)
+	if err != nil {
+		return nil, err
+	}
+	return reposource.NewGoDependency(*mod), nil
 }
 
 func (s *goModulesSyncer) Download(ctx context.Context, dir string, dep reposource.PackageDependency) error {
