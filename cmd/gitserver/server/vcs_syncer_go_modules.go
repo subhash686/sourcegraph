@@ -32,10 +32,10 @@ func NewGoModulesSyncer(
 	}
 
 	return &vcsDependenciesSyncer{
-		store:       store,
 		typ:         "go_modules",
 		scheme:      depsStore.GoModulesScheme,
 		placeholder: placeholder,
+		store:       store,
 		syncer: &goModulesSyncer{
 			client:     client,
 			connection: connection,

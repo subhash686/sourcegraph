@@ -17,19 +17,26 @@ import (
 	"github.com/sourcegraph/sourcegraph/lib/errors"
 )
 
+// vcsDependenciesSyncer implements the VCSSyncer interface for dependency repos of different types.
 type vcsDependenciesSyncer struct {
-	store       repos.DependenciesStore
 	typ         string
 	scheme      string
 	placeholder reposource.PackageDependency
-	syncer      interface {
-		// Get verifies that a dependency at a specific version exists in the package host and
-		// returns it if so. Otherwise it returns an error that passes errcode.IsNotFound().
-		Get(ctx context.Context, name, version string) (reposource.PackageDependency, error)
-		Download(ctx context.Context, dir string, dep reposource.PackageDependency) error
-		FromRepoName(repoName string) (reposource.PackageDependency, error)
-		ConfigVersions(packageName string) ([]string, error)
-	}
+	syncer      dependenciesSyncer
+	store       repos.DependenciesStore
+}
+
+var _ VCSSyncer = &vcsDependenciesSyncer{}
+
+// dependenciesSyncer encapsulates the methods required to implement a syncer
+// of package dependencies e.g. npm, go modules, jvm, python
+type dependenciesSyncer interface {
+	// Get verifies that a dependency at a specific version exists in the package host and
+	// returns it if so. Otherwise it returns an error that passes errcode.IsNotFound() test.
+	Get(ctx context.Context, name, version string) (reposource.PackageDependency, error)
+	Download(ctx context.Context, dir string, dep reposource.PackageDependency) error
+	FromRepoName(repoName string) (reposource.PackageDependency, error)
+	ConfigVersions(packageName string) ([]string, error)
 }
 
 func (ps *vcsDependenciesSyncer) IsCloneable(ctx context.Context, repoUrl *vcs.URL) error {

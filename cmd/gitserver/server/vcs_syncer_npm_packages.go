@@ -38,10 +38,10 @@ func NewNpmPackagesSyncer(
 	}
 
 	return &vcsDependenciesSyncer{
-		store:       store,
 		typ:         "npm_packages",
 		scheme:      dependenciesStore.NpmPackagesScheme,
 		placeholder: placeholder,
+		store:       store,
 		syncer: &npmPackagesSyncer{
 			connection: connection,
 			client:     client,
