@@ -69,22 +69,6 @@ func FetchSources(ctx context.Context, client Client, dependency *reposource.Npm
 	return client.FetchTarball(ctx, dependency)
 }
 
-func Exists(ctx context.Context, client Client, dependency *reposource.NpmDependency) (exists bool, err error) {
-	ctx, endObservation := operations.exists.With(ctx, &err, observation.Args{LogFields: []otlog.Field{
-		otlog.Bool("exists", exists),
-		otlog.String("dependency", dependency.PackageManagerSyntax()),
-	}})
-	defer endObservation(1, observation.Args{})
-
-	if _, err = client.GetDependencyInfo(ctx, dependency); err != nil {
-		if errors.HasType(err, npmError{}) {
-			return false, nil
-		}
-		return false, err
-	}
-	return true, nil
-}
-
 type HTTPClient struct {
 	registryURL string
 	doer        httpcli.Doer
@@ -164,6 +148,10 @@ func (n npmError) Error() string {
 		return fmt.Sprintf("npm HTTP response %d: %s", n.statusCode, n.err.Error())
 	}
 	return n.err.Error()
+}
+
+func (n npmError) NotFound() bool {
+	return n.statusCode >= 400 && n.statusCode < 500
 }
 
 func (client *HTTPClient) makeGetRequest(ctx context.Context, url string) (io.ReadCloser, error) {
