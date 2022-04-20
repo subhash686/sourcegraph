@@ -3,8 +3,8 @@ import React from 'react'
 import { createLocation, createMemoryHistory } from 'history'
 
 import { renderWithBrandedContext } from '@sourcegraph/shared/src/testing'
-import { Driver, createDriverForTest } from '@sourcegraph/shared/src/testing/driver'
 import { MockedTestProvider } from '@sourcegraph/shared/src/testing/apollo'
+import { Driver, createDriverForTest } from '@sourcegraph/shared/src/testing/driver'
 import {
     mockFetchAutoDefinedSearchContexts,
     mockFetchSearchContexts,
