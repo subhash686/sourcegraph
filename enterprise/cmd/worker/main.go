@@ -2,9 +2,6 @@ package main
 
 import (
 	"context"
-	"log"
-	"os"
-	"strconv"
 	"time"
 
 	"github.com/sourcegraph/sourcegraph/cmd/worker/job"
@@ -22,15 +19,21 @@ import (
 	"github.com/sourcegraph/sourcegraph/internal/authz"
 	"github.com/sourcegraph/sourcegraph/internal/conf"
 	"github.com/sourcegraph/sourcegraph/internal/database"
+	"github.com/sourcegraph/sourcegraph/internal/env"
 	"github.com/sourcegraph/sourcegraph/internal/extsvc/versions"
 	"github.com/sourcegraph/sourcegraph/internal/oobmigration"
+	"github.com/sourcegraph/sourcegraph/internal/version"
+	"github.com/sourcegraph/sourcegraph/lib/log"
 )
 
 func main() {
-	debug, _ := strconv.ParseBool(os.Getenv("DEBUG"))
-	if debug {
-		log.Println("enterprise edition")
-	}
+	log.Init(log.Resource{
+		Name:    env.MyName,
+		Version: version.Version(),
+	})
+
+	logger := log.Scoped("main", "")
+	logger.Debug("enterprise edition")
 
 	go setAuthzProviders()
 
