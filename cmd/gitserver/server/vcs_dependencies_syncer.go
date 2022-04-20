@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"io"
 	"os"
 	"os/exec"
 	"path"
@@ -19,15 +18,17 @@ import (
 )
 
 type vcsDependenciesSyncer struct {
-	depsStore              repos.DependenciesStore
-	exists                 func(name, version string) error
-	fromRepoName           func(repoName string) (reposource.PackageDependency, error)
-	fromRepoNameAndVersion func(name, version string) (reposource.PackageDependency, error)
-	fetch                  func(ctx context.Context, dir string) (io.ReadCloser, error)
-	unpack                 func(r io.ReadCloser) error
-	placeholder            reposource.PackageDependency
-	scheme                 string
-	configVersions         func(packageName string) ([]string, error)
+	store       repos.DependenciesStore
+	typ         string
+	scheme      string
+	placeholder reposource.PackageDependency
+	syncer      interface {
+		Exists(ctx context.Context, name, version string) error
+		FromRepoName(repoName string) (reposource.PackageDependency, error)
+		FromRepoNameAndVersion(name, version string) (reposource.PackageDependency, error)
+		Download(ctx context.Context, dir string, dep reposource.PackageDependency) error
+		ConfigVersions(packageName string) ([]string, error)
+	}
 }
 
 func (ps *vcsDependenciesSyncer) IsCloneable(ctx context.Context, repoUrl *vcs.URL) error {
@@ -35,7 +36,7 @@ func (ps *vcsDependenciesSyncer) IsCloneable(ctx context.Context, repoUrl *vcs.U
 }
 
 func (ps *vcsDependenciesSyncer) Type() string {
-	return ps.scheme
+	return ps.typ
 }
 
 func (ps *vcsDependenciesSyncer) RemoteShowCommand(ctx context.Context, remoteURL *vcs.URL) (cmd *exec.Cmd, err error) {
@@ -63,7 +64,7 @@ func (ps *vcsDependenciesSyncer) CloneCommand(ctx context.Context, remoteURL *vc
 }
 
 func (ps *vcsDependenciesSyncer) Fetch(ctx context.Context, remoteURL *vcs.URL, dir GitDir) error {
-	dep, err := ps.fromRepoName(remoteURL.Path)
+	dep, err := ps.syncer.FromRepoName(remoteURL.Path)
 	if err != nil {
 		return err
 	}
@@ -76,7 +77,7 @@ func (ps *vcsDependenciesSyncer) Fetch(ctx context.Context, remoteURL *vcs.URL, 
 
 	cloneable := make([]reposource.PackageDependency, 0, len(versions))
 	for _, version := range versions {
-		err = ps.exists(depName, version)
+		err = ps.syncer.Exists(ctx, depName, version)
 		if err != nil {
 			if errcode.IsNotFound(err) {
 				log15.Warn("skipping missing dependency", "dep", depName, "version", version, "type", ps.typ)
@@ -84,7 +85,7 @@ func (ps *vcsDependenciesSyncer) Fetch(ctx context.Context, remoteURL *vcs.URL, 
 			}
 			return err
 		}
-		d, err := ps.fromRepoNameAndVersion(depName, version)
+		d, err := ps.syncer.FromRepoNameAndVersion(depName, version)
 		if err != nil {
 			// skip?
 			return err
@@ -123,7 +124,7 @@ func (ps *vcsDependenciesSyncer) Fetch(ctx context.Context, remoteURL *vcs.URL, 
 	for tag := range tags {
 		if _, isDependencyTag := dependencyTags[tag]; !isDependencyTag {
 			cmd := exec.CommandContext(ctx, "git", "tag", "-d", tag)
-			if _, err := runCommandInDirectory(ctx, cmd, string(dir), placeholderGoDependency); err != nil {
+			if _, err := runCommandInDirectory(ctx, cmd, string(dir), ps.placeholder); err != nil {
 				log15.Error("Failed to delete git tag", "error", err, "tag", tag)
 				continue
 			}
@@ -140,12 +141,7 @@ func (ps *vcsDependenciesSyncer) gitPushDependencyTag(ctx context.Context, bareG
 	}
 	defer os.RemoveAll(workDir)
 
-	r, err := ps.fetch(ctx, workDir)
-	if err != nil {
-		return err
-	}
-
-	err = ps.unpack(r)
+	err = ps.syncer.Download(ctx, workDir, dep)
 	if err != nil {
 		return err
 	}
@@ -200,12 +196,12 @@ func (ps *vcsDependenciesSyncer) gitPushDependencyTag(ctx context.Context, bareG
 }
 
 func (ps *vcsDependenciesSyncer) versions(ctx context.Context, packageName string) ([]string, error) {
-	versions, err := ps.configVersions(packageName)
+	versions, err := ps.syncer.ConfigVersions(packageName)
 	if err != nil {
 		return nil, err
 	}
 
-	depRepos, err := ps.depsStore.ListDependencyRepos(ctx, dependenciesStore.ListDependencyReposOpts{
+	depRepos, err := ps.store.ListDependencyRepos(ctx, dependenciesStore.ListDependencyReposOpts{
 		Scheme:      ps.scheme,
 		Name:        packageName,
 		NewestFirst: true,
@@ -270,33 +266,3 @@ func isPotentiallyMaliciousFilepathInArchive(filepath, destinationDir string) (o
 
 	return cleanedOutputPath, false
 }
-
-// [NOTE: LSIF-config-json]
-//
-// For JVM languages, when we create a fake Git repository from a Maven module
-// we also add a lsif-java.json file to the repository. However, we don't create
-// an analogous lsif-node.json for JavaScript/TypeScript. Here's why:
-//
-// 1. A specific JDK version is needed to correctly index the code. This JDK
-//    version needs to be specified when launching lsif-java. So if we wanted
-//    to determine the JDK version at auto-indexing time (instead of at upload
-//    time), we'd need to have a separate tool that ran before lsif-java.
-//
-//    This doesn't apply to JS/TS because there is no clear source of truth for
-//    the version of the runtime (Node etc.) that is needed.
-//
-// 2. The lsif-java.json file indicates whether the repo contains the sources of
-//    the JDK or whether it's a regular Maven artifact. For the JDK, lsif-java
-//    has a special case to emit "export" monikers instead of "import".
-//
-//    This doesn't apply to JS/S because there is no special npm module
-//    analogous to the JDK.
-//
-// 3. The lsif-java.json file is used as a marker file to enable inference
-//    of the auto-indexing configuration for a JVM package repo
-//    (e.g. from Maven Central). Since JVM source repos (e.g. from GitHub) lack
-//    this file, the auto-indexing configuration is not inferred.
-//
-//    This doesn't apply to JS/TS because auto-indexing configuration is
-//    inferred from the package.json file for both source repos and package
-//    repos.
