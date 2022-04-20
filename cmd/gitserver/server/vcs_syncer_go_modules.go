@@ -45,8 +45,45 @@ func NewGoModulesSyncer(
 	connection *schema.GoModulesConnection,
 	depStore repos.DependenciesStore,
 	client *gomodproxy.Client,
-) *GoModulesSyncer {
-	return &GoModulesSyncer{connection, depStore, client}
+) VCSSyncer {
+	return packageSyncer{
+		exists:       nil,
+		fromRepoName: nil,
+
+		fetchDependencies: nil,
+		fetch:             nil,
+		unpack:            nil,
+		placeholder:       nil,
+		typ:               "go_modules",
+	}
+}
+
+func goFetchDependencies(repoName string) {
+	dep, err := reposource.ParseGoDependencyFromRepoName(remoteURL.Path)
+	if err != nil {
+		return errors.Wrapf(err, "failed to parse go dependency from repo name: %s", remoteURL.Path)
+	}
+
+	dependencies, err := s.moduleVersions(ctx, dep.PackageSyntax())
+	if err != nil {
+		return err
+	}
+
+	cloneable := dependencies[:0] // in place filtering
+	for _, dep := range dependencies {
+		_, err := s.client.GetVersion(ctx, dep.PackageSyntax(), dep.PackageVersion())
+		if err != nil {
+			if errcode.IsNotFound(err) {
+				log15.Warn("skipping missing go dependency", "dep", dep.PackageManagerSyntax())
+				continue
+			}
+			return err
+		}
+		cloneable = append(cloneable, dep)
+	}
+
+	dependencies = cloneable
+
 }
 
 var _ VCSSyncer = &GoModulesSyncer{}
