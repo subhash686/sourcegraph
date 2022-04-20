@@ -10,49 +10,46 @@ import (
 
 	"github.com/inconshreveable/log15"
 
+	dependenciesStore "github.com/sourcegraph/sourcegraph/internal/codeintel/dependencies/store"
 	"github.com/sourcegraph/sourcegraph/internal/conf/reposource"
+	"github.com/sourcegraph/sourcegraph/internal/errcode"
+	"github.com/sourcegraph/sourcegraph/internal/repos"
 	"github.com/sourcegraph/sourcegraph/internal/vcs"
 	"github.com/sourcegraph/sourcegraph/lib/errors"
 )
 
-type packageSyncer interface {
-	fetchDependencies(repoName string) ([]reposource.PackageDependency, error)
-	fetch(dir string) (io.ReadCloser, error)
-	unpack(r io.ReadCloser) error
-	placeholderDependency() reposource.PackageDependency
-
-	// Skip not clonable instead of hard failure, Take out interface
-	IsCloneable(ctx context.Context, remoteURL *vcs.URL) error
+type vcsDependenciesSyncer struct {
+	depsStore              repos.DependenciesStore
+	exists                 func(name, version string) error
+	fromRepoName           func(repoName string) (reposource.PackageDependency, error)
+	fromRepoNameAndVersion func(name, version string) (reposource.PackageDependency, error)
+	fetch                  func(ctx context.Context, dir string) (io.ReadCloser, error)
+	unpack                 func(r io.ReadCloser) error
+	placeholder            reposource.PackageDependency
+	scheme                 string
+	configVersions         func(packageName string) ([]string, error)
 }
 
-func newVCSPackageSyncer(typ string, ps packageSyncer) (VCSSyncer, error) {
-	return &vcsPackageSyncer{
-		typ:           typ,
-		packageSyncer: ps,
-	}, nil
+func (ps *vcsDependenciesSyncer) IsCloneable(ctx context.Context, repoUrl *vcs.URL) error {
+	return nil
 }
 
-type vcsPackageSyncer struct {
-	typ string
-	packageSyncer
+func (ps *vcsDependenciesSyncer) Type() string {
+	return ps.scheme
 }
 
-func (ps *vcsPackageSyncer) Type() string {
-	return ps.typ
-}
-
-func (ps *vcsPackageSyncer) RemoteShowCommand(ctx context.Context, remoteURL *vcs.URL) (cmd *exec.Cmd, err error) {
+func (ps *vcsDependenciesSyncer) RemoteShowCommand(ctx context.Context, remoteURL *vcs.URL) (cmd *exec.Cmd, err error) {
 	return exec.CommandContext(ctx, "git", "remote", "show", "./"), nil
 }
 
-func (ps *vcsPackageSyncer) CloneCommand(ctx context.Context, remoteURL *vcs.URL, bareGitDirectory string) (*exec.Cmd, error) {
+func (ps *vcsDependenciesSyncer) CloneCommand(ctx context.Context, remoteURL *vcs.URL, bareGitDirectory string) (*exec.Cmd, error) {
 	err := os.MkdirAll(bareGitDirectory, 0755)
 	if err != nil {
 		return nil, err
 	}
 
 	cmd := exec.CommandContext(ctx, "git", "--bare", "init")
-	if _, err := runCommandInDirectory(ctx, cmd, bareGitDirectory, ps.placeholderDependency()); err != nil {
+	if _, err := runCommandInDirectory(ctx, cmd, bareGitDirectory, ps.placeholder); err != nil {
 		return nil, err
 	}
 
@@ -65,13 +62,37 @@ func (ps *vcsPackageSyncer) CloneCommand(ctx context.Context, remoteURL *vcs.URL
 	return exec.CommandContext(ctx, "git", "--version"), nil
 }
 
-func (ps *vcsPackageSyncer) Fetch(ctx context.Context, remoteURL *vcs.URL, dir GitDir) error {
-	dependencies, err := ps.fetchDependencies(remoteURL.Path)
+func (ps *vcsDependenciesSyncer) Fetch(ctx context.Context, remoteURL *vcs.URL, dir GitDir) error {
+	dep, err := ps.fromRepoName(remoteURL.Path)
 	if err != nil {
 		return err
 	}
 
-	out, err := runCommandInDirectory(ctx, exec.CommandContext(ctx, "git", "tag"), string(dir), placeholderGoDependency)
+	depName := dep.PackageSyntax()
+	versions, err := ps.versions(ctx, depName)
+	if err != nil {
+		return err
+	}
+
+	cloneable := make([]reposource.PackageDependency, 0, len(versions))
+	for _, version := range versions {
+		err = ps.exists(depName, version)
+		if err != nil {
+			if errcode.IsNotFound(err) {
+				log15.Warn("skipping missing dependency", "dep", depName, "version", version, "type", ps.typ)
+				continue
+			}
+			return err
+		}
+		d, err := ps.fromRepoNameAndVersion(depName, version)
+		if err != nil {
+			// skip?
+			return err
+		}
+		cloneable = append(cloneable, d)
+	}
+
+	out, err := runCommandInDirectory(ctx, exec.CommandContext(ctx, "git", "tag"), string(dir), ps.placeholder)
 	if err != nil {
 		return err
 	}
@@ -84,7 +105,7 @@ func (ps *vcsPackageSyncer) Fetch(ctx context.Context, remoteURL *vcs.URL, dir G
 		tags[line] = true
 	}
 
-	for i, dependency := range dependencies {
+	for i, dependency := range cloneable {
 		if tags[dependency.GitTagFromVersion()] {
 			continue
 		}
@@ -94,8 +115,8 @@ func (ps *vcsPackageSyncer) Fetch(ctx context.Context, remoteURL *vcs.URL, dir G
 		}
 	}
 
-	dependencyTags := make(map[string]struct{}, len(dependencies))
-	for _, dependency := range dependencies {
+	dependencyTags := make(map[string]struct{}, len(cloneable))
+	for _, dependency := range cloneable {
 		dependencyTags[dependency.GitTagFromVersion()] = struct{}{}
 	}
 
@@ -112,14 +133,14 @@ func (ps *vcsPackageSyncer) Fetch(ctx context.Context, remoteURL *vcs.URL, dir G
 	return nil
 }
 
-func (ps *vcsPackageSyncer) gitPushDependencyTag(ctx context.Context, bareGitDirectory string, dep reposource.PackageDependency, isLatestVersion bool) error {
+func (ps *vcsDependenciesSyncer) gitPushDependencyTag(ctx context.Context, bareGitDirectory string, dep reposource.PackageDependency, isLatestVersion bool) error {
 	workDir, err := os.MkdirTemp("", ps.Type())
 	if err != nil {
 		return err
 	}
 	defer os.RemoveAll(workDir)
 
-	r, err := ps.fetch(workDir)
+	r, err := ps.fetch(ctx, workDir)
 	if err != nil {
 		return err
 	}
@@ -176,6 +197,28 @@ func (ps *vcsPackageSyncer) gitPushDependencyTag(ctx context.Context, bareGitDir
 	}
 
 	return nil
+}
+
+func (ps *vcsDependenciesSyncer) versions(ctx context.Context, packageName string) ([]string, error) {
+	versions, err := ps.configVersions(packageName)
+	if err != nil {
+		return nil, err
+	}
+
+	depRepos, err := ps.depsStore.ListDependencyRepos(ctx, dependenciesStore.ListDependencyReposOpts{
+		Scheme:      ps.scheme,
+		Name:        packageName,
+		NewestFirst: true,
+	})
+
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to list dependencies from db")
+	}
+
+	for _, depRepo := range depRepos {
+		versions = append(versions, depRepo.Version)
+	}
+	return versions, nil
 }
 
 func runCommandInDirectory(ctx context.Context, cmd *exec.Cmd, workingDirectory string, dependency reposource.PackageDependency) (string, error) {
