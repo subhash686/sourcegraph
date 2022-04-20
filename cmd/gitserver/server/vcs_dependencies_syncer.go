@@ -22,6 +22,7 @@ type vcsDependenciesSyncer struct {
 	typ         string
 	scheme      string
 	placeholder reposource.PackageDependency
+	configDeps  []string
 	syncer      dependenciesSyncer
 	store       repos.DependenciesStore
 }
@@ -35,8 +36,8 @@ type dependenciesSyncer interface {
 	// returns it if so. Otherwise it returns an error that passes errcode.IsNotFound() test.
 	Get(ctx context.Context, name, version string) (reposource.PackageDependency, error)
 	Download(ctx context.Context, dir string, dep reposource.PackageDependency) error
-	FromRepoName(repoName string) (reposource.PackageDependency, error)
-	ConfigVersions(packageName string) ([]string, error)
+	ParseDependency(dep string) (reposource.PackageDependency, error)
+	ParseDependencyFromRepoName(repoName string) (reposource.PackageDependency, error)
 }
 
 func (ps *vcsDependenciesSyncer) IsCloneable(ctx context.Context, repoUrl *vcs.URL) error {
@@ -72,7 +73,7 @@ func (ps *vcsDependenciesSyncer) CloneCommand(ctx context.Context, remoteURL *vc
 }
 
 func (ps *vcsDependenciesSyncer) Fetch(ctx context.Context, remoteURL *vcs.URL, dir GitDir) error {
-	dep, err := ps.syncer.FromRepoName(remoteURL.Path)
+	dep, err := ps.syncer.ParseDependencyFromRepoName(remoteURL.Path)
 	if err != nil {
 		return err
 	}
@@ -199,9 +200,17 @@ func (ps *vcsDependenciesSyncer) gitPushDependencyTag(ctx context.Context, bareG
 }
 
 func (ps *vcsDependenciesSyncer) versions(ctx context.Context, packageName string) ([]string, error) {
-	versions, err := ps.syncer.ConfigVersions(packageName)
-	if err != nil {
-		return nil, err
+	var versions []string
+	for _, d := range ps.configDeps {
+		dep, err := ps.syncer.ParseDependency(d)
+		if err != nil {
+			log15.Warn("skipping malformed dependency", "dep", d, "error", err)
+			continue
+		}
+
+		if dep.PackageSyntax() == packageName {
+			versions = append(versions, dep.PackageVersion())
+		}
 	}
 
 	depRepos, err := ps.store.ListDependencyRepos(ctx, dependenciesStore.ListDependencyReposOpts{

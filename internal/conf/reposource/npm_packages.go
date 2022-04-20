@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
-	"strings"
 
 	"github.com/sourcegraph/sourcegraph/internal/api"
 	"github.com/sourcegraph/sourcegraph/internal/lazyregexp"
@@ -125,12 +124,6 @@ func (pkg *NpmPackage) CloneURL() string {
 	return string(pkg.RepoName())
 }
 
-// MatchesDependencyString checks if a dependency (= package + version pair)
-// refers to the same package as pkg.
-func (pkg *NpmPackage) MatchesDependencyString(depPackageSyntax string) bool {
-	return strings.HasPrefix(depPackageSyntax, pkg.PackageSyntax()+"@")
-}
-
 // Format a package using (@scope/)?name syntax.
 //
 // This is largely for "lower-level" code interacting with the npm API.
@@ -158,7 +151,7 @@ type NpmDependency struct {
 	// about tags.
 	Version string
 
-	// The URL of the tarball to download.
+	// The URL of the tarball to download. Possibly empty.
 	TarballURL string
 }
 

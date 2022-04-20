@@ -8,7 +8,6 @@ import (
 	"os"
 	"path"
 
-	"github.com/inconshreveable/log15"
 	"golang.org/x/mod/module"
 	modzip "golang.org/x/mod/zip"
 
@@ -36,6 +35,7 @@ func NewGoModulesSyncer(
 		scheme:      depsStore.GoModulesScheme,
 		placeholder: placeholder,
 		store:       store,
+		configDeps:  connection.Dependencies,
 		syncer: &goModulesSyncer{
 			client:     client,
 			connection: connection,
@@ -48,7 +48,11 @@ type goModulesSyncer struct {
 	connection *schema.GoModulesConnection
 }
 
-func (s *goModulesSyncer) FromRepoName(repoName string) (reposource.PackageDependency, error) {
+func (goModulesSyncer) ParseDependency(dep string) (reposource.PackageDependency, error) {
+	return reposource.ParseGoDependency(dep)
+}
+
+func (goModulesSyncer) ParseDependencyFromRepoName(repoName string) (reposource.PackageDependency, error) {
 	return reposource.ParseGoDependencyFromRepoName(repoName)
 }
 
@@ -72,21 +76,6 @@ func (s *goModulesSyncer) Download(ctx context.Context, dir string, dep reposour
 	}
 
 	return nil
-}
-
-func (s *goModulesSyncer) ConfigVersions(packageName string) (versions []string, _ error) {
-	for _, d := range s.connection.Dependencies {
-		dep, err := reposource.ParseGoDependency(d)
-		if err != nil {
-			log15.Warn("skipping malformed go dependency", "dep", d, "error", err)
-			continue
-		}
-
-		if dep.PackageSyntax() == packageName {
-			versions = append(versions, dep.PackageVersion())
-		}
-	}
-	return
 }
 
 // unzip the given go module zip into workDir, skipping any files that aren't

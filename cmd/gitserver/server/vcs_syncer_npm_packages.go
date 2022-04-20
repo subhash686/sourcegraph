@@ -42,6 +42,7 @@ func NewNpmPackagesSyncer(
 		scheme:      dependenciesStore.NpmPackagesScheme,
 		placeholder: placeholder,
 		store:       store,
+		configDeps:  connection.Dependencies,
 		syncer: &npmPackagesSyncer{
 			connection: connection,
 			client:     client,
@@ -56,7 +57,19 @@ type npmPackagesSyncer struct {
 	client npm.Client
 }
 
-func (s *npmPackagesSyncer) FromRepoName(repoName string) (reposource.PackageDependency, error) {
+func (npmPackagesSyncer) ParseDependency(dep string) (reposource.PackageDependency, error) {
+	return reposource.ParseNpmDependency(dep)
+}
+
+func (npmPackagesSyncer) ParseDependencyFromRepoName(repoName string) (reposource.PackageDependency, error) {
+	pkg, err := reposource.ParseNpmPackageFromRepoURL(repoName)
+	if err != nil {
+		return nil, err
+	}
+	return &reposource.NpmDependency{NpmPackage: pkg}, nil
+}
+
+func (s *npmPackagesSyncer) Parse(repoName string) (reposource.PackageDependency, error) {
 	pkg, err := reposource.ParseNpmPackageFromRepoURL(repoName)
 	if err != nil {
 		return nil, err
@@ -91,26 +104,6 @@ func (s *npmPackagesSyncer) Download(ctx context.Context, dir string, dep reposo
 	}
 
 	return nil
-}
-
-func (s *npmPackagesSyncer) ConfigVersions(packageName string) (versions []string, _ error) {
-	pkg, err := reposource.ParseNpmPackageFromPackageSyntax(packageName)
-	if err != nil {
-		return nil, err
-	}
-
-	for _, dep := range s.connection.Dependencies {
-		if pkg.MatchesDependencyString(dep) {
-			dep, err := reposource.ParseNpmDependency(dep)
-			if err != nil {
-				log15.Warn("skipping malformed npm dependency", "dep", dep, "error", err)
-				continue
-			}
-			versions = append(versions, dep.Version)
-		}
-	}
-
-	return
 }
 
 // Decompress a tarball at tgzPath, putting the files under destination.
