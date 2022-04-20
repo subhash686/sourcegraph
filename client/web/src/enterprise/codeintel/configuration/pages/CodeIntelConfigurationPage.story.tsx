@@ -178,8 +178,7 @@ const repositoryConfigurationRequest: MockedResponse<IndexConfigurationResult> =
                                     "indexer": "sourcegraph/lsif-typescript:autoindex",
                                     "indexer_args": [
                                         "lsif-typescript",
-                                        "-p",
-                                        "."
+                                        "index"
                                     ],
                                     "outfile": ""
                                 }

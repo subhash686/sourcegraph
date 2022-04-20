@@ -75,8 +75,7 @@ indexing_jobs:
     indexer: sourcegraph/lsif-typescript:autoindex
     indexer_args:
       - lsif-typescript
-      - -p
-      - .
+      - index
 ```
 
 ## Rust

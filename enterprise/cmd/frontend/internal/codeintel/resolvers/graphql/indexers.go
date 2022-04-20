@@ -147,7 +147,7 @@ var imageToIndexer = map[string]gql.CodeIntelIndexerResolver{
 	"sourcegraph/lsif-java":       &lsifJava,
 	"sourcegraph/lsif-go":         &lsifGo,
 	"sourcegraph/lsif-typescript": &lsifTypescript,
-	"sourcegraph/lsif-typescript": &lsifNode,
+	"sourcegraph/lsif-node":       &lsifNode,
 	"sourcegraph/lsif-clang":      &lsifClang,
 	"davidrjenni/lsif-php":        &lsifPHP,
 	"sourcegraph/lsif-rust":       &rustAnalyzer,

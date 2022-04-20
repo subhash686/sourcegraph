@@ -92,7 +92,7 @@ jobs:
       - name: Generate LSIF data
         uses: docker://sourcegraph/lsif-typescript:latest
         with:
-          args: lsif-typescript -p .
+          args: lsif-typescript index
       - name: Upload LSIF data
         uses: docker://sourcegraph/src-cli:latest
         with:
@@ -140,7 +140,7 @@ jobs:
       - restore_cache:
           keys:
             - dependencies
-      - run: lsif-typescript -p .
+      - run: lsif-typescript index
         # this will upload to Sourcegraph.com, you may need to substitute a different command
         # by default, we ignore failures to avoid disrupting CI pipelines with non-critical errors.
       - run: src lsif upload -github-token=<<parameters.github-token>> -ignore-upload-failure
